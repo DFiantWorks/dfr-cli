@@ -1,0 +1,126 @@
+#This is the configuration file for the DFiant Remote (DFR) utility.
+#DFR enables running various programs remotely in dedicated cloud nodes.
+
+#Session settings
+#----------------
+session:
+  #Session timeout in hours
+  #Default = 8
+  timeout_hours: 8
+
+
+#Sync settings
+#-------------
+sync:
+  #Filter of synchronized files from the local folder to the remote node folder.
+  #The filter setting can use combination inclusion/exclusion filter string settings.
+  #Use `i <filter>` string to include the path files that match the filter pattern.
+  #Use `e <filter>` string to exclude the path files that match the filter pattern.
+  #DFR uses rclone for synchronizing, and the filter pattern is documented at:
+  #https://rclone.org/filtering/#pattern-syntax 
+  filter_to_remote: [
+    # Common config sources
+    i *.json,
+    i *.yaml,
+    i *.toml,
+    i *.config,
+    i *.cfg,
+    # Common scripting sources
+    i *.py,
+    i Makefile,
+    i *.mk,
+    i *.sh,
+    i *.tcl,
+    i *.do,
+    i *.sc,
+    # Common hardware RTL files
+    i *.vhd,
+    i *.vhdl,
+    i *.sv,
+    i *.v,
+    # Common hardware project files
+    i *.xpr,
+    i *.mpf,
+    # Common hardware constraints files
+    i *.xdc,
+    i *.sdc,
+    i *.ucf,
+    i *.lpf,
+    i *.pcf,
+    # Common software sources
+    i *.c,
+    i *.cpp,
+    i *.h,
+    i *.scala,
+  ]
+  #Filter of synchronized files to the local folder from the remote node folder.
+  #The filter setting can use combination inclusion/exclusion filter string settings.
+  #Use `i <filter>` string to include the path files that match the filter pattern.
+  #Use `e <filter>` string to exclude the path files that match the filter pattern.
+  #DFR uses rclone for synchronizing, and the filter pattern is documented at:
+  #https://rclone.org/filtering/#pattern-syntax 
+  filter_from_remote: [
+    # Common bitstream/flash files
+    i *.bit,
+    i *.mcs,
+    i *.sof,
+    i *.rbf,
+    # Common log files
+    i *.log,
+  ]
+
+
+#Port forwarding settings
+#------------------------
+#Some applications may require additional ports forwarded so your local machine
+#can connect to the remote running application as if it was running locally.
+#For example, you may want to use a remote JTag programming software with a 
+#locally connected hardware.
+port_forwarding:
+  tcp: [
+    #3121, #default Xilinx HW Server port 
+  ]
+  udp: [
+
+  ]
+
+
+#Tool version settings
+#---------------------
+#The tool versions we expect the remote node to support for this folder.
+#The format in which we specify the versions is:
+#<tool_domain>:
+#   <tool_vendor>:
+#       <tool_name>: <tool_version>
+#The tool version can be: 
+# * a specific version release string
+# * a version-control tag string
+# * 'YYYY.MM.DD-HASH' a commit hash string, prefixed by its date. 
+#   The commit hash can be partial, as long as its unique to its date.
+# * 'latest' for the latest stable supported release or tag.
+# * 'latest-exp' for the latest beta release or commit hash on the primary branch  
+#For a complete list of supported tools, domains, and vendors see: 
+#https://github.com/DFiantWorks/dfr_scripts
+tool_versions:
+  embedded:
+    oss:
+      # gcc-arm:    latest
+      # gcc-riscv:  latest
+  vlsi:
+    oss: 
+      # cvc:        latest
+      # litex:      latest
+      # magic:      latest
+      # netgen:     latest
+      # padring:    latest
+      # pipelinec:  latest
+      # openlane:   latest
+      # openroad:   latest
+      # qflow:      latest
+      # silice:     latest
+    intel:
+      # quartus:    latest
+    xilinx:
+      # vivado:     latest
+    
+
