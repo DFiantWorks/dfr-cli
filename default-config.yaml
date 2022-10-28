@@ -8,6 +8,16 @@ session:
   #Default = 8
   timeout_hours: 8
 
+#Remote Control settings
+#-----------------------
+remote_control:
+  #The protocol of the remote control
+  #Use `rdp` for RDP protocol. By default, DFR will invoke an RDP client according to your OS.
+  #Use `vnc` for VNC protocol. By default, DFR will invoke your default browser for control.
+  #The VNC route does not currently support clipboard copy-paste between the remote and local machines.
+  #The RDP route supports clipboard copy-paste between the remote and local machines.
+  #Default = rdp
+  protocol: rdp
 
 #Sync settings
 #-------------
