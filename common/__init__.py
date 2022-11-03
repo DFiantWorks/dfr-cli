@@ -16,6 +16,12 @@ class Paths:
 
 paths = Paths()
 
+def addEnvPaths(envName: str, paths: list[str]) -> None:
+  if len(os.environ.get(envName, '')) == 0:
+    os.environ[envName] = ':'.join(paths)
+  else:
+    os.environ[envName] = f"{os.environ[envName]}:{':'.join(paths)}"
+
 class Tool:
   domain: str
   vendor: str
@@ -32,18 +38,69 @@ class Tool:
     pass
   def install(self, flags: str):
     pass
-  def path(self) -> str:
-    pass
-  def env(self):
-    pass
+  def installPath(self) -> str:
+    return f"{paths.INSTALL}/{self.domain}/{self.vendor}/{self.name}/${self.version}"
+  def linkedPath(self) -> str:
+    return f"/opt/{self.name}"
+  def execFolder(self) -> str:
+    return "bin"
+  #command aliases to be created [<origin path> : <alias name>]
+  #by default, empty list
+  def cmdAliases(self) -> list[tuple[str, str]]:
+    return []
+  #symbolic links to be created [<origin path> : <link path>]
+  #by default, adding a link between install path and the defined linked path
+  def symlinks(self) -> list[tuple[str, str]]:
+    return [(self.installPath(), self.linkedPath())]
+  #added paths to the path environment variable
+  #by default, adding the execution path as determined by the linked path and execution folder
+  def env_path(self) -> list[str]:
+    return [f"{self.linkedPath()}/{self.execFolder()}"]
+  #added python paths to the python path environment variable
+  #by default, empty list
+  def env_python_path(self) -> list[str]:
+    return []
+  #added ld_library paths to the ld_library path environment variable
+  #by default, empty list
+  def env_ld_library_path(self) -> list[str]:
+    return []
+  #added man paths to the man path environment variable
+  #by default, empty list
+  def env_man_path(self) -> list[str]:
+    return []
+  #added other environment variables {<var_name> : <value>, ...}
+  #by default, empty dict
+  def env_extra(self) -> dict[str, str]:
+    return {}
+  #the initial environment setup that includes environment variables,
+  #symlinks, and command aliases
+  def setup_env(self):
+    addEnvPaths("PATH", self.env_path())
+    addEnvPaths("PYTHONPATH", self.env_python_path())
+    addEnvPaths("LD_LIBRARY_PATH", self.env_ld_library_path())
+    addEnvPaths("MANPATH", self.env_man_path())
+    for env in self.env_extra().items:
+      os.environ[env[0]] = env[1]
+    for symlink in self.symlinks():
+      os.symlink(symlink[0], symlink[1])
+    for cmdAlias in self.cmdAliases():
+      with open(f'/usr/bin/{cmdAlias[1]}', 'w') as f:
+        f.write('#!/bin/bash\n')
+        f.write(f'{cmdAlias[0]} "$@"')
+      os.chmod(f'/usr/bin/{cmdAlias[1]}', 0o777)          
+
 
 class Tools:
-  all: list[Tool]
+  all: list[Tool] = []
   def __init__(self, tool_versions_flat: dict[str, str]): 
     sys.path.append(paths.TOOLS) #to allow import of dfr_scripts
     for toolModulePath, version in tool_versions_flat.items():
       module = importlib.import_module(f"dfr_scripts.{toolModulePath}")
-      self.all.append(module.tool(version))
+      self.all.append(module.SpecificTool(version))
+  def setup_env(self):
+    for t in all:
+      t.setup_env()
+
       
 class GitOSSTool(Tool):
   def __init__(self, domain: str, name: str, version: str, repo: str):

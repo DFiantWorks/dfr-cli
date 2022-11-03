@@ -1,4 +1,6 @@
-from dfr_scripts.common import Tool, GitOSSTool
+from dfr_scripts.common import GitOSSTool
 
-def tool(version: str) -> Tool: 
-  return GitOSSTool("vlsi", "cvc", version, "https://github.com/d-m-bailey/cvc")
+class SpecificTool(GitOSSTool):
+  def __init__(self, version: str):
+    super().__init__("vlsi", "cvc", version, "https://github.com/d-m-bailey/cvc")
+
