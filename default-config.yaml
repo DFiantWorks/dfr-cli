@@ -102,13 +102,18 @@ port_forwarding:
 #<tool_domain>:
 #   <tool_vendor>:
 #       <tool_name>: <tool_version>
+#If the tool is not specified, then it won't be available.
 #The tool version can be: 
-# * a specific version release string
-# * a version-control tag string
-# * 'YYYY.MM.DD-HASH' a commit hash string, prefixed by its date. 
-#   The commit hash can be partial, as long as its unique to its date.
-# * 'latest' for the latest stable supported release or tag.
-# * 'latest-exp' for the latest beta release or commit hash on the primary branch  
+# * A specific version release string
+# * For version controlled repo, a tag string or a full commit hash
+# * 'latest[:VERSION]' for the latest stable supported release or tag.
+#   Without an explicit version, DFR will look for the latest and then update the config file.
+#   With an explicit version, that version will be set. 
+#   We can run DFR to update this latest version automatically via `dfr config update`
+# * 'latest-exp[:VERSION]' for the latest beta release or commit hash on the primary branch  
+#   Without an explicit version, DFR will look for the latest and then update the config file.
+#   With an explicit version, that version will be set. 
+#   We can run DFR to update this latest version automatically via `dfr config update`
 #For a complete list of supported tools, domains, and vendors see: 
 #https://github.com/DFiantWorks/dfr_scripts
 tool_versions:
