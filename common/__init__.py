@@ -39,7 +39,7 @@ class Tool:
   def install(self, flags: str):
     pass
   def installPath(self) -> str:
-    return f"{paths.INSTALL}/{self.domain}/{self.vendor}/{self.name}/${self.version}"
+    return f"{paths.INSTALL}/{self.domain}/{self.vendor}/{self.name}/{self.version}"
   def linkedPath(self) -> str:
     return f"/opt/{self.name}"
   def execFolder(self) -> str:
@@ -79,11 +79,14 @@ class Tool:
     addEnvPaths("PYTHONPATH", self.env_python_path())
     addEnvPaths("LD_LIBRARY_PATH", self.env_ld_library_path())
     addEnvPaths("MANPATH", self.env_man_path())
-    for env in self.env_extra().items:
+    for env in self.env_extra().items():
+      print(env)
       os.environ[env[0]] = env[1]
     for symlink in self.symlinks():
+      print(symlink)
       os.symlink(symlink[0], symlink[1])
     for cmdAlias in self.cmdAliases():
+      print(cmdAlias)
       with open(f'/usr/bin/{cmdAlias[1]}', 'w') as f:
         f.write('#!/bin/bash\n')
         f.write(f'{cmdAlias[0]} "$@"')
@@ -98,7 +101,7 @@ class Tools:
       module = importlib.import_module(f"dfr_scripts.{toolModulePath}")
       self.all.append(module.SpecificTool(version))
   def setup_env(self):
-    for t in all:
+    for t in self.all:
       t.setup_env()
 
       
