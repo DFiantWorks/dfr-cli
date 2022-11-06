@@ -4,6 +4,8 @@ import os
 import time
 import sys
 import importlib
+import requests
+import re
 from typing import Dict
 import stat
 
@@ -32,12 +34,12 @@ class Tool:
     self.vendor = vendor
     self.name = name
     self.version = version
-  def stage(self):
-    pass
-  def build(self):
-    pass
+  def fullName(self) -> str:
+    return f"{self.domain}.{self.vendor}.{self.name}"
   def install(self, flags: str):
-    pass
+    if os.path.exists(self.installPath()):
+      print(f"Tool folder for {self.fullName()} with version {self.version} already exists.")
+      sys.exit(1)
   def installPath(self) -> str:
     return f"{paths.INSTALL}/{self.domain}/{self.vendor}/{self.name}/{self.version}"
   def linkedPath(self) -> str:
@@ -80,37 +82,62 @@ class Tool:
     addEnvPaths("LD_LIBRARY_PATH", self.env_ld_library_path())
     addEnvPaths("MANPATH", self.env_man_path())
     for env in self.env_extra().items():
-      print(env)
       os.environ[env[0]] = env[1]
     for symlink in self.symlinks():
-      print(symlink)
       os.symlink(symlink[0], symlink[1])
     for cmdAlias in self.cmdAliases():
-      print(cmdAlias)
       with open(f'/usr/bin/{cmdAlias[1]}', 'w') as f:
         f.write('#!/bin/bash\n')
         f.write(f'{cmdAlias[0]} "$@"')
       os.chmod(f'/usr/bin/{cmdAlias[1]}', 0o777)          
 
+def getTool(fullName: str, version: str) -> Tool:
+  if (fullName.count('.') != 2):
+    print(f"Expected full name in format <domain>.<vendor>.<name>, but found: {fullName}")
+    sys.exit(1)
+  try:
+    module = importlib.import_module(f"dfr_scripts.{fullName}")
+    return module.SpecificTool(version)
+  except:
+    print(f"Missing install script for `{fullName}`")
+    sys.exit(1)
 
 class Tools:
-  all: list[Tool] = []
+  all: dict[str, Tool] = {}
   def __init__(self, tool_versions_flat: dict[str, str]): 
-    sys.path.append(paths.TOOLS) #to allow import of dfr_scripts
-    for toolModulePath, version in tool_versions_flat.items():
-      module = importlib.import_module(f"dfr_scripts.{toolModulePath}")
-      self.all.append(module.SpecificTool(version))
+    for fullName, version in tool_versions_flat.items():
+      self.all[fullName] = getTool(fullName, version)
   def setup_env(self):
-    for t in self.all:
-      t.setup_env()
-
+    for t in self.all.items():
+      t[1].setup_env()
       
 class GitOSSTool(Tool):
   def __init__(self, domain: str, name: str, version: str, repo: str):
     super().__init__(domain, "oss", name, version)
     self.repo = repo
-  def stage(self):
-    pass
+  def buildAndInstallShellCmd(self, flags: str) -> str:
+    return f"""
+      echo Missing build & install command override for {self.fullName()}.
+      exit 1
+    """
+  def install(self, flags: str):
+    super().install(flags)
+    cmd = f"""
+      set -e
+      cd /tmp
+      git clone {self.repo} {self.name}
+      cd {self.name}
+      git checkout {self.version}
+      TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
+      {self.buildAndInstallShellCmd(flags)}
+      touch -a -m -t $TIMEDATE {self.installPath()}
+    """
+    #strip empty lines (only whitespaces and newlines)
+    properCmd = "".join([s.strip(" ") for s in cmd.splitlines(True) if s.strip("\t\r\n ")]) 
+    r = subprocess.run(properCmd, shell=True)
+    if r.returncode != 0:
+      sys.exit(r.returncode)
+
 
 class InteractivelyDownloadedTool(Tool):
   def __init__(self, domain: str, vendor: str, name: str, version: str):
@@ -128,8 +155,7 @@ class InteractivelyDownloadedTool(Tool):
   def unsupportedVersionErr(self):
     print(f"Error: {self.name} version `{self.version}` is not supported.")
     sys.exit(1)
-
-  def stage(self):
+  def install(self, flags: str):
     print(f"(Remote) Firefox is now opening the {self.vendor} download page for you.")
     print(self.downloadInstructions())
     firefoxPid = subprocess.Popen(
