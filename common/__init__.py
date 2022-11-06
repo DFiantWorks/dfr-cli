@@ -70,6 +70,10 @@ class Tool:
   #by default, empty list
   def env_man_path(self) -> list[str]:
     return []
+  #added pkg_config paths to the pkg_config path environment variable
+  #by default, empty list
+  def env_pkg_config_path(self) -> list[str]:
+    return []
   #added other environment variables {<var_name> : <value>, ...}
   #by default, empty dict
   def env_extra(self) -> dict[str, str]:
@@ -81,6 +85,7 @@ class Tool:
     addEnvPaths("PYTHONPATH", self.env_python_path())
     addEnvPaths("LD_LIBRARY_PATH", self.env_ld_library_path())
     addEnvPaths("MANPATH", self.env_man_path())
+    addEnvPaths("PKG_CONFIG_PATH", self.env_pkg_config_path())
     for env in self.env_extra().items():
       os.environ[env[0]] = env[1]
     for symlink in self.symlinks():
