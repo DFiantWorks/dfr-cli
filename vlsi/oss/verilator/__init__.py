@@ -13,7 +13,7 @@ class SpecificTool(GitOSSTool):
       make install
     """
   def env_man_path(self) -> list[str]:
-    return [f"{self.installPath()}/man"]
+    return [f"{self.linkedPath()}/man"]
   def env_pkg_config_path(self) -> list[str]:
-    return [f"{self.installPath()}/share/pkgconfig"]
+    return [f"{self.linkedPath()}/share/pkgconfig"]
 

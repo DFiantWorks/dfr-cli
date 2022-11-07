@@ -24,6 +24,9 @@ def addEnvPaths(envName: str, paths: list[str]) -> None:
   else:
     os.environ[envName] = f"{os.environ[envName]}:{':'.join(paths)}"
 
+def downloadAvailable(url: str) -> bool:
+  return requests.head(url).status_code < 400
+
 class Tool:
   domain: str
   vendor: str
@@ -107,6 +110,18 @@ def getTool(fullName: str, version: str) -> Tool:
     print(f"Missing install script for `{fullName}`")
     sys.exit(1)
 
+class ShellInstallTool(Tool):
+  def installShellCmd(self, flags: str) -> str:
+    pass
+  def install(self, flags: str):
+    super().install(flags)
+    cmd = self.installShellCmd(flags)
+    #strip empty lines (only whitespaces and newlines)
+    properCmd = "".join([s.strip(" ") for s in cmd.splitlines(True) if s.strip("\t\r\n ")]) 
+    r = subprocess.run(properCmd, shell=True)
+    if r.returncode != 0:
+      sys.exit(r.returncode)
+
 class Tools:
   all: dict[str, Tool] = {}
   def __init__(self, tool_versions_flat: dict[str, str]): 
@@ -116,7 +131,7 @@ class Tools:
     for t in self.all.items():
       t[1].setup_env()
       
-class GitOSSTool(Tool):
+class GitOSSTool(ShellInstallTool):
   def __init__(self, domain: str, name: str, version: str, repo: str):
     super().__init__(domain, "oss", name, version)
     self.repo = repo
@@ -125,9 +140,8 @@ class GitOSSTool(Tool):
       echo Missing build & install command override for {self.fullName()}.
       exit 1
     """
-  def install(self, flags: str):
-    super().install(flags)
-    cmd = f"""
+  def installShellCmd(self, flags: str) -> str:
+    return f"""
       set -e
       cd /tmp
       git clone {self.repo} {self.name}
@@ -137,12 +151,6 @@ class GitOSSTool(Tool):
       {self.buildAndInstallShellCmd(flags)}
       touch -a -m -t $TIMEDATE {self.installPath()}
     """
-    #strip empty lines (only whitespaces and newlines)
-    properCmd = "".join([s.strip(" ") for s in cmd.splitlines(True) if s.strip("\t\r\n ")]) 
-    r = subprocess.run(properCmd, shell=True)
-    if r.returncode != 0:
-      sys.exit(r.returncode)
-
 
 class InteractivelyDownloadedTool(Tool):
   def __init__(self, domain: str, vendor: str, name: str, version: str):

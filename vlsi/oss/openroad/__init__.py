@@ -19,11 +19,11 @@ class SpecificTool(GitOSSTool):
       f"{self.linkedPath()}/pdn/scripts",
     ]
   def env_man_path(self) -> list[str]:
-    return [f"{self.installPath()}/share/man"]
+    return [f"{self.linkedPath()}/share/man"]
   def env_ld_library_path(self) -> list[str]:
     return [
-      f"{self.installPath()}/lib",
-      f"{self.installPath()}/lib/Linux-x86_64",
+      f"{self.linkedPath()}/lib",
+      f"{self.linkedPath()}/lib/Linux-x86_64",
     ]
   def env_extra(self) -> dict[str, str]:
-    return {"OPENROAD" : self.installPath()}
+    return {"OPENROAD" : self.linkedPath()}
