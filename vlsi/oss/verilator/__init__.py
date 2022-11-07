@@ -2,8 +2,8 @@ from dfr_scripts.common import GitOSSTool
 
 #TODO: Add integration with SystemC https://verilator.org/guide/latest/install.html#install-systemc
 class SpecificTool(GitOSSTool):
-  def __init__(self, version: str):
-    super().__init__("vlsi", "verilator", version, "https://github.com/verilator/verilator")
+  def __init__(self, versionReq: str):
+    super().__init__("vlsi", "verilator", versionReq, "https://github.com/verilator/verilator")
   def buildAndInstallShellCmd(self, flags: str) -> str:
     return f"""
       unset VERILATOR_ROOT

@@ -2,8 +2,8 @@ import sys
 from dfr_scripts.common import ShellInstallTool, downloadAvailable
 
 class SpecificTool(ShellInstallTool):
-  def __init__(self, version: str):
-    super().__init__("vlsi", "oss", "openpdk", version)
+  def __init__(self, versionReq: str):
+    super().__init__("vlsi", "oss", "openpdk", versionReq)
   def pdkCmd(self, pdk: str) -> str:
     url = f"https://github.com/efabless/volare/releases/download/{pdk}-{self.version}/default.tar.xz"
     if downloadAvailable(url):

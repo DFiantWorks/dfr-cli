@@ -1,8 +1,8 @@
 from dfr_scripts.common import GitOSSTool
 
 class SpecificTool(GitOSSTool):
-  def __init__(self, version: str):
-    super().__init__("vlsi", "openroad", version, "https://github.com/The-OpenROAD-Project/OpenROAD")
+  def __init__(self, versionReq: str):
+    super().__init__("vlsi", "openroad", versionReq, "https://github.com/The-OpenROAD-Project/OpenROAD")
   def buildAndInstallShellCmd(self, flags: str) -> str:
     return f"""
       git submodule update --init --recursive
