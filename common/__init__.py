@@ -110,6 +110,26 @@ def getTool(fullName: str, version: str) -> Tool:
     print(f"Missing install script for `{fullName}`")
     sys.exit(1)
 
+
+class Tools:
+  all: dict[str, Tool] = {}
+  def __init__(self, tool_versions_flat: dict[str, str]): 
+    for fullName, version in tool_versions_flat.items():
+      self.all[fullName] = getTool(fullName, version)
+  def setup_env(self):
+    for t in self.all.items():
+      t[1].setup_env()
+
+
+class ZeroInstallTool(Tool):
+  def install(self, flags: str):
+    pass
+  def symlinks(self) -> list[tuple[str, str]]:
+    return []
+  def env_path(self) -> list[str]:
+    return []
+
+
 class ShellInstallTool(Tool):
   def installShellCmd(self, flags: str) -> str:
     pass
@@ -121,15 +141,7 @@ class ShellInstallTool(Tool):
     r = subprocess.run(properCmd, shell=True)
     if r.returncode != 0:
       sys.exit(r.returncode)
-
-class Tools:
-  all: dict[str, Tool] = {}
-  def __init__(self, tool_versions_flat: dict[str, str]): 
-    for fullName, version in tool_versions_flat.items():
-      self.all[fullName] = getTool(fullName, version)
-  def setup_env(self):
-    for t in self.all.items():
-      t[1].setup_env()
+      
       
 class GitOSSTool(ShellInstallTool):
   def __init__(self, domain: str, name: str, version: str, repo: str):
