@@ -27,6 +27,31 @@ def addEnvPaths(envName: str, paths: list[str]) -> None:
 def downloadAvailable(url: str) -> bool:
   return requests.head(url).status_code < 400
 
+def wildcardToRegex(pattern: str) -> re.Pattern:
+  return re.compile("^" + re.escape(pattern).replace("\\*", ".*").replace("\\?", ".") + "$")
+
+def isCommitVersion(version: str) -> bool:
+  return re.fullmatch(r"^[0-9a-fA-F]$", version or "") is not None and len(version) >= 5
+
+def getNewestVersionFolder(path: str, pattern: re.Pattern) -> str:
+  #from listing of all the given path file/folders that fall within
+  #the given pattern
+  fileOrFolderList: list[str] = list(filter(
+    lambda x: re.match(pattern, x) is not None,
+    os.listdir(path)
+  ))
+  folderList: list[str] = list(filter(
+    #filtering just folders
+    os.path.isdir,
+    #creating full paths for directory check
+    map(lambda x: os.path.join(path, x), fileOrFolderList)
+  ))
+  if folderList:
+    return os.path.basename(max(folderList, key=lambda x: os.stat(x).st_ctime_ns))
+  else:
+    return ""
+
+
 class Tool:
   domain: str
   vendor: str
