@@ -1,10 +1,12 @@
 from dfr_scripts.common import GitOSSTool
 
+
 class SpecificTool(GitOSSTool):
-  def __init__(self, versionReq: str):
-    super().__init__("vlsi", "qflow", versionReq, "https://github.com/RTimothyEdwards/qflow")
-  def buildAndInstallShellCmd(self, flags: str) -> str:
-    return f"""
+    def __init__(self, versionReq: str):
+        super().__init__("vlsi", "qflow", versionReq, "https://github.com/RTimothyEdwards/qflow")
+
+    def buildAndInstallShellCmd(self, flags: str) -> str:
+        return f"""
       ./configure
       cd src
       make vlog2Verilog && make vlog2Spice
@@ -16,4 +18,3 @@ class SpecificTool(GitOSSTool):
       chmod +x spi2xspice.py
       cp spi2xspice.py {self.installPath()}/bin/
     """
-
