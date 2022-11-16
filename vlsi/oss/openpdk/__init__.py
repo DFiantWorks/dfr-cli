@@ -10,11 +10,11 @@ class SpecificTool(ShellInstallTool):
         url = f"https://github.com/efabless/volare/releases/download/{pdk}-{self.version}/default.tar.xz"
         if downloadAvailable(url):
             return f"""
-        wget {url}
-        mkdir -p {self.installPath()}
-        tar -xvf default.tar.xz -C {self.installPath()}
-        rm default.tar.xz
-      """
+                    wget {url}
+                    mkdir -p {self.installPath()}
+                    tar -xvf default.tar.xz -C {self.installPath()}
+                    rm default.tar.xz
+                    """
         else:
             return ""
 

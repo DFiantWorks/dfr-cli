@@ -7,8 +7,8 @@ class SpecificTool(GitOSSTool):
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
-      autoreconf -vif
-      ./configure --disable-nls --prefix={self.installPath()}
-      make -j`nproc`
-      make install
-    """
+                autoreconf -vif
+                ./configure --disable-nls --prefix={self.installPath()}
+                make -j`nproc`
+                make install
+                """

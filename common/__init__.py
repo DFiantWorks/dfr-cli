@@ -8,6 +8,7 @@ import requests
 import re
 from typing import Dict
 from abc import abstractmethod
+from typing import final, Callable
 import stat
 
 
@@ -37,14 +38,11 @@ def wildcardToRegex(pattern: str) -> re.Pattern:
     return re.compile("^" + re.escape(pattern).replace("\\*", ".*").replace("\\?", ".") + "$")
 
 
-def isCommitVersion(version: str) -> bool:
-    return re.fullmatch(r"^[0-9a-fA-F]$", version or "") is not None and len(version) >= 5
-
-
-def getNewestVersionFolder(path: str, pattern: re.Pattern) -> str:
-    # from listing of all the given path file/folders that fall within
-    # the given pattern
-    fileOrFolderList: list[str] = list(filter(lambda x: re.match(pattern, x) is not None, os.listdir(path)))
+def getNewestVersionFolder(path: str, __filterFunc: Callable[[str], bool]) -> str:
+    if not os.path.exists(path):
+        return ""
+    # listing all the given path file/folders according to the given filter
+    fileOrFolderList: list[str] = list(filter(__filterFunc, os.listdir(path)))
     folderList: list[str] = list(
         filter(
             # filtering just folders
@@ -59,23 +57,46 @@ def getNewestVersionFolder(path: str, pattern: re.Pattern) -> str:
         return ""
 
 
+def isCommitVersion(versionReq: str) -> bool:
+    return re.fullmatch(r"^[0-9a-fA-F]$", versionReq or "") is not None and len(versionReq) >= 5
+
+
 class Tool:
     domain: str
     vendor: str
     name: str
+    versionReq: str
     version: str
 
     def __init__(self, domain: str, vendor: str, name: str, versionReq: str):
         self.domain = domain
         self.vendor = vendor
         self.name = name
+        self.versionReq = versionReq
         self.version = self.actualVersion(versionReq)
 
-    def actualVersion(self, versionReq: str) -> str:
-        return versionReq
+    def latestInstallableVersion(self, pattern: str) -> str:
+        return ""
 
-    def dependencies(self) -> list[str]:
-        return []
+    def latestVersion(self, pattern: str) -> str:
+        return getNewestVersionFolder(
+            self.toolPathNoVersion(), lambda x: re.match(wildcardToRegex(pattern), x) is not None
+        )
+
+    def actualVersion(self, versionReq: str) -> str:
+        # requests latest
+        if "*" in versionReq or "?" in versionReq:
+            # has concrete version specified
+            if ":" in versionReq:
+                req, concrete = versionReq.split(":")
+                return concrete
+            else:
+                return self.latestVersion(versionReq)
+        else:
+            return versionReq
+
+    def dependencies(self) -> dict[str, str]:
+        return {}
 
     def fullName(self) -> str:
         return f"{self.domain}.{self.vendor}.{self.name}"
@@ -85,8 +106,11 @@ class Tool:
             print(f"Tool folder for {self.fullName()} with version {self.version} already exists.")
             sys.exit(1)
 
+    def toolPathNoVersion(self) -> str:
+        return f"{paths.INSTALL}/{self.domain}/{self.vendor}/{self.name}"
+
     def installPath(self) -> str:
-        return f"{paths.INSTALL}/{self.domain}/{self.vendor}/{self.name}/{self.version}"
+        return f"{self.toolPathNoVersion()}/{self.version}"
 
     def linkedPath(self) -> str:
         return f"/opt/{self.name}"
@@ -204,27 +228,55 @@ class ShellInstallTool(Tool):
 
 
 class GitOSSTool(ShellInstallTool):
+    repo: str
+
     def __init__(self, domain: str, name: str, versionReq: str, repo: str):
-        super().__init__(domain, "oss", name, versionReq)
         self.repo = repo
+        super().__init__(domain, "oss", name, versionReq)
+
+    # get a set of commits matching a given tag pattern
+    @final
+    def getGitTagPatternCommits(self, tagPattern: re.Pattern) -> set[str]:
+        command = f"git ls-remote -t {self.repo}"
+        commitsTagsBytes = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE).stdout.read().splitlines()  # type: ignore
+        ret: set[str] = set()
+        for ctb in commitsTagsBytes:
+            commit, tag = ctb.decode("utf-8").replace("refs/tags/", "").split("\t")
+            if re.match(tagPattern, tag) is not None:
+                ret.add(commit)
+        return ret
+
+    def latestVersion(self, pattern: str) -> str:
+        commits = self.getGitTagPatternCommits(wildcardToRegex(pattern))
+        return getNewestVersionFolder(self.toolPathNoVersion(), lambda x: x in commits)
+
+    def actualVersion(self, versionReq: str) -> str:
+        version = super().actualVersion(versionReq)
+        if isCommitVersion(version):
+            if len(version) == 40:
+                return version  # full commit
+            else:  # find full version
+                return getNewestVersionFolder(self.toolPathNoVersion(), lambda x: x.startswith(versionReq))
+        else:
+            return self.latestVersion(version)
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
-      echo Missing build & install command override for {self.fullName()}.
-      exit 1
-    """
+                echo Missing build & install command override for {self.fullName()}.
+                exit 1
+                """
 
     def installShellCmd(self, flags: str) -> str:
         return f"""
-      set -e
-      cd /tmp
-      git clone {self.repo} {self.name}
-      cd {self.name}
-      git checkout {self.version}
-      TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
-      {self.buildAndInstallShellCmd(flags)}
-      touch -a -m -t $TIMEDATE {self.installPath()}
-    """
+                set -e
+                cd /tmp
+                git clone {self.repo} {self.name}
+                cd {self.name}
+                git checkout {self.version}
+                TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
+                {self.buildAndInstallShellCmd(flags)}
+                touch -a -m -t $TIMEDATE {self.installPath()}
+                """
 
 
 class InteractivelyDownloadedTool(Tool):

@@ -7,9 +7,9 @@ class SpecificTool(GitOSSTool):
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
-      bash ./bootstrap.sh 
-      cd build/ 
-      ninja
-      mkdir -p {self.installPath()}/bin 
-      cp padring {self.installPath()}/bin/
-    """
+                bash ./bootstrap.sh 
+                cd build/ 
+                ninja
+                mkdir -p {self.installPath()}/bin 
+                cp padring {self.installPath()}/bin/
+                """

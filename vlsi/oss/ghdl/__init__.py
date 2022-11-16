@@ -7,7 +7,7 @@ class SpecificTool(GitOSSTool):
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
-      ./configure --prefix={self.installPath()}
-      make -j`nproc`
-      make install
-    """
+                ./configure --prefix={self.installPath()}
+                make -j`nproc`
+                make install
+                """

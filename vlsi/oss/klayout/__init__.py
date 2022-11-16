@@ -7,9 +7,9 @@ class SpecificTool(GitOSSTool):
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
-      mkdir -p {self.installPath()}
-      ./build.sh -j`nproc` -prefix {self.installPath()} -without-qtbinding
-    """
+                mkdir -p {self.installPath()}
+                ./build.sh -j`nproc` -prefix {self.installPath()} -without-qtbinding
+                """
 
     def execFolder(self) -> str:
         return ""

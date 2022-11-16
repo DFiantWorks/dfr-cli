@@ -7,13 +7,13 @@ class SpecificTool(GitOSSTool):
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
-      git submodule update --init --recursive
-      mkdir -p build
-      cd build
-      cmake .. -DCMAKE_INSTALL_PREFIX={self.installPath()}
-      make -j`nproc`  
-      make install
-    """
+                git submodule update --init --recursive
+                mkdir -p build
+                cd build
+                cmake .. -DCMAKE_INSTALL_PREFIX={self.installPath()}
+                make -j`nproc`  
+                make install
+                """
 
     def env_path(self) -> list[str]:
         return [
