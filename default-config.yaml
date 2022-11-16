@@ -106,11 +106,7 @@ port_forwarding:
 #The tool version can be: 
 # * A specific version release string
 # * For version controlled repo, a tag string or a full commit hash
-# * 'latest[:VERSION]' for the latest stable supported release or tag.
-#   Without an explicit version, DFR will look for the latest and then update the config file.
-#   With an explicit version, that version will be set. 
-#   We can run DFR to update this latest version automatically via `dfr tools update`
-# * 'latest-exp[:VERSION]' for the latest beta release or commit hash on the primary branch  
+# * 'latest[:VERSION]' for the latest stable/experimental supported release or tag.
 #   Without an explicit version, DFR will look for the latest and then update the config file.
 #   With an explicit version, that version will be set. 
 #   We can run DFR to update this latest version automatically via `dfr tools update`

@@ -9,6 +9,7 @@ import re
 from typing import Dict
 from abc import abstractmethod
 from typing import final, Callable
+import string
 import stat
 
 
@@ -35,7 +36,10 @@ def downloadAvailable(url: str) -> bool:
 
 
 def wildcardToRegex(pattern: str) -> re.Pattern:
-    return re.compile("^" + re.escape(pattern).replace("\\*", ".*").replace("\\?", ".") + "$")
+    if pattern == "latest":
+        return re.compile("^.*$")
+    else:
+        return re.compile("^" + re.escape(pattern).replace("\\*", ".*").replace("\\?", ".") + "$")
 
 
 def getNewestVersionFolder(path: str, __filterFunc: Callable[[str], bool]) -> str:
@@ -58,7 +62,7 @@ def getNewestVersionFolder(path: str, __filterFunc: Callable[[str], bool]) -> st
 
 
 def isCommitVersion(versionReq: str) -> bool:
-    return re.fullmatch(r"^[0-9a-fA-F]$", versionReq or "") is not None and len(versionReq) >= 5
+    return all(c in string.hexdigits for c in versionReq) and len(versionReq) >= 5
 
 
 class Tool:
@@ -73,10 +77,9 @@ class Tool:
         self.vendor = vendor
         self.name = name
         self.versionReq = versionReq
-        self.version = self.actualVersion(versionReq)
 
     def latestInstallableVersion(self, pattern: str) -> str:
-        return ""
+        return self.versionReq
 
     def latestVersion(self, pattern: str) -> str:
         return getNewestVersionFolder(
@@ -95,6 +98,9 @@ class Tool:
         else:
             return versionReq
 
+    def dependenciesNoVersions(self) -> set[str]:
+        return set()
+
     def dependencies(self) -> dict[str, str]:
         return {}
 
@@ -102,6 +108,7 @@ class Tool:
         return f"{self.domain}.{self.vendor}.{self.name}"
 
     def install(self, flags: str):
+        self.version = self.latestInstallableVersion(self.versionReq)
         if os.path.exists(self.installPath()):
             print(f"Tool folder for {self.fullName()} with version {self.version} already exists.")
             sys.exit(1)
@@ -160,7 +167,12 @@ class Tool:
 
     # the initial environment setup that includes environment variables,
     # symlinks, and command aliases
+    @final
     def setup_env(self):
+        self.version = self.actualVersion(self.versionReq)
+        if self.version == "":
+            print(f"Tool {self.fullName()} is missing the version {self.versionReq}.")
+            sys.exit(1)
         addEnvPaths("PATH", self.env_path())
         addEnvPaths("PYTHONPATH", self.env_python_path())
         addEnvPaths("LD_LIBRARY_PATH", self.env_ld_library_path())
@@ -246,9 +258,28 @@ class GitOSSTool(ShellInstallTool):
                 ret.add(commit)
         return ret
 
+    @final
+    def getGitFullCommit(self, partialCommit: str) -> str:
+        command = f"git ls-remote {self.repo}"
+        commitsTagsBytes = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE).stdout.read().splitlines()  # type: ignore
+        for ctb in commitsTagsBytes:
+            commit: str = ctb.decode("utf-8").split("\t")[0]
+            if commit.startswith(partialCommit):
+                return commit
+        return ""
+
     def latestVersion(self, pattern: str) -> str:
         commits = self.getGitTagPatternCommits(wildcardToRegex(pattern))
         return getNewestVersionFolder(self.toolPathNoVersion(), lambda x: x in commits)
+
+    def latestInstallableVersion(self, version: str) -> str:
+        if isCommitVersion(version):
+            if len(version) == 40:
+                return version  # full commit
+            else:  # find full version
+                return self.getGitFullCommit(version)
+        else:
+            return self.getGitTagPatternCommits(wildcardToRegex(version)).pop()
 
     def actualVersion(self, versionReq: str) -> str:
         version = super().actualVersion(versionReq)
