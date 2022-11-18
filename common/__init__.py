@@ -15,10 +15,8 @@ import stat
 
 class Paths:
     TOOLS = "/mnt/tools"
-    INSTALL = f"{TOOLS}/install"
-    SCRIPTS = f"{TOOLS}/scripts"
-    STAGING = f"{TOOLS}/staging"
-    COMMON_SCRIPTS = f"{SCRIPTS}/common"
+    ORGTOOLS = "/mnt/orgtools"
+    INSTALL = f"{TOOLS}"
 
 
 paths = Paths()
