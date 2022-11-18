@@ -40,6 +40,10 @@ def wildcardToRegex(pattern: str) -> re.Pattern:
         return re.compile("^" + re.escape(pattern).replace("\\*", ".*").replace("\\?", ".") + "$")
 
 
+def installDirReadyFile(path: str) -> str:
+    return os.path.join(path, ".dfr_ready")
+
+
 def getNewestVersionFolder(path: str, __filterFunc: Callable[[str], bool]) -> str:
     if not os.path.exists(path):
         return ""
@@ -48,13 +52,13 @@ def getNewestVersionFolder(path: str, __filterFunc: Callable[[str], bool]) -> st
     folderList: list[str] = list(
         filter(
             # filtering just folders
-            os.path.isdir,
+            lambda x: os.path.isdir(x) and os.path.exists(installDirReadyFile(x)),
             # creating full paths for directory check
             map(lambda x: os.path.join(path, x), fileOrFolderList),
         )
     )
     if folderList:
-        return os.path.basename(max(folderList, key=lambda x: os.stat(x).st_ctime_ns))
+        return os.path.basename(max(folderList, key=lambda x: os.stat(installDirReadyFile(x)).st_ctime_ns))
     else:
         return ""
 
@@ -69,6 +73,7 @@ class Tool:
     name: str
     versionReq: str
     version: str
+    _zero_install: bool = False
 
     def __init__(self, domain: str, vendor: str, name: str, versionReq: str):
         self.domain = domain
@@ -107,7 +112,7 @@ class Tool:
 
     def install(self, flags: str):
         self.version = self.latestInstallableVersion(self.versionReq)
-        if os.path.exists(self.installPath()):
+        if os.path.exists(self.installDirReadyFilePath()):
             print(f"Tool folder for {self.fullName()} with version {self.version} already exists.")
             sys.exit(1)
 
@@ -116,6 +121,9 @@ class Tool:
 
     def installPath(self) -> str:
         return f"{self.toolPathNoVersion()}/{self.version}"
+
+    def installDirReadyFilePath(self) -> str:
+        return installDirReadyFile(self.installPath())
 
     def linkedPath(self) -> str:
         return f"/opt/{self.name}"
@@ -168,7 +176,7 @@ class Tool:
     @final
     def setup_env(self):
         self.version = self.actualVersion(self.versionReq)
-        if self.version == "":
+        if self.version == "" or (not self._zero_install and not os.path.exists(self.installDirReadyFilePath())):
             print(f"Tool {self.fullName()} is missing the version {self.versionReq}.")
             sys.exit(1)
         addEnvPaths("PATH", self.env_path())
@@ -212,6 +220,8 @@ class Tools:
 
 
 class ZeroInstallTool(Tool):
+    _zero_install: bool = True
+
     def install(self, flags: str):
         pass
 
@@ -227,6 +237,7 @@ class ShellInstallTool(Tool):
     def installShellCmd(self, flags: str) -> str:
         pass
 
+    @final
     def install(self, flags: str):
         super().install(flags)
         cmd = self.installShellCmd(flags)
@@ -295,8 +306,10 @@ class GitOSSTool(ShellInstallTool):
                 exit 1
                 """
 
+    @final
     def installShellCmd(self, flags: str) -> str:
         return f"""
+                rm -rf {self.installPath()}
                 set -e
                 cd /tmp
                 git clone {self.repo} {self.name}
@@ -304,7 +317,7 @@ class GitOSSTool(ShellInstallTool):
                 git checkout {self.version}
                 TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
                 {self.buildAndInstallShellCmd(flags)}
-                touch -a -m -t $TIMEDATE {self.installPath()}
+                touch -a -m -t $TIMEDATE {self.installDirReadyFilePath()}
                 """
 
 
