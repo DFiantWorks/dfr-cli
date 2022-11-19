@@ -67,6 +67,22 @@ def isCommitVersion(versionReq: str) -> bool:
     return all(c in string.hexdigits for c in versionReq) and len(versionReq) >= 5
 
 
+def curlGitFolderCmd(repo: str, commit: str, folder: str) -> str:
+    return f"curl -L {repo}/tarball/{commit}  | tar --wildcards */{folder} --strip-components={folder.count('/') + 2} -xzC ."
+
+
+def __runShellCmd(cmd: str):
+    withErrCmd = f"""
+                  set -e
+                  {cmd}
+                  """
+    # strip empty lines (only whitespaces and newlines)
+    properCmd = "".join([s.strip(" ") for s in withErrCmd.splitlines(True) if s.strip("\t\r\n ")])
+    r = subprocess.run(properCmd, shell=True)
+    if r.returncode != 0:
+        sys.exit(r.returncode)
+
+
 class Tool:
     domain: str
     vendor: str
@@ -107,14 +123,40 @@ class Tool:
     def dependencies(self) -> dict[str, str]:
         return {}
 
+    @final
     def fullName(self) -> str:
         return f"{self.domain}.{self.vendor}.{self.name}"
 
+    @abstractmethod
+    def _install(self, flags: str):
+        pass
+
+    @final
     def install(self, flags: str):
         self.version = self.latestInstallableVersion(self.versionReq)
         if os.path.exists(self.installDirReadyFilePath()):
             print(f"Tool folder for {self.fullName()} with version {self.version} already exists.")
             sys.exit(1)
+        self._install(flags)
+
+    @final
+    def _noDemoErr(self):
+        print(f"No demo available for {self.fullName()}")
+        sys.exit(1)
+
+    def _demoAsk(self) -> str:
+        return self._noDemoErr()
+
+    def _demo(self, flags: str):
+        self._noDemoErr()
+
+    @final
+    def demo(self, flags: str):
+        self.setVersion()
+        checkedFlags = flags
+        if flags == "":
+            checkedFlags = self._demoAsk()
+        self._demo(checkedFlags)
 
     def toolPathNoVersion(self) -> str:
         return f"{paths.INSTALL}/{self.domain}/{self.vendor}/{self.name}"
@@ -171,14 +213,18 @@ class Tool:
     def env_extra(self) -> dict[str, str]:
         return {}
 
+    def setVersion(self):
+        self.version = self.actualVersion(self.versionReq)
+        print(f"version: {self.version}")
+        if self.version == "" or (not self._zero_install and not os.path.exists(self.installDirReadyFilePath())):
+            print(f"Missing version. Consider running: `dfr install {self.fullName()} {self.versionReq}`")
+            sys.exit(1)
+
     # the initial environment setup that includes environment variables,
     # symlinks, and command aliases
     @final
     def setup_env(self):
-        self.version = self.actualVersion(self.versionReq)
-        if self.version == "" or (not self._zero_install and not os.path.exists(self.installDirReadyFilePath())):
-            print(f"Tool {self.fullName()} is missing the version {self.versionReq}.")
-            sys.exit(1)
+        self.setVersion()
         addEnvPaths("PATH", self.env_path())
         addEnvPaths("PYTHONPATH", self.env_python_path())
         addEnvPaths("LD_LIBRARY_PATH", self.env_ld_library_path())
@@ -222,7 +268,7 @@ class Tools:
 class ZeroInstallTool(Tool):
     _zero_install: bool = True
 
-    def install(self, flags: str):
+    def _install(self, flags: str):
         pass
 
     def symlinks(self) -> list[tuple[str, str]]:
@@ -234,18 +280,12 @@ class ZeroInstallTool(Tool):
 
 class ShellInstallTool(Tool):
     @abstractmethod
-    def installShellCmd(self, flags: str) -> str:
+    def _installShellCmd(self, flags: str) -> str:
         pass
 
     @final
-    def install(self, flags: str):
-        super().install(flags)
-        cmd = self.installShellCmd(flags)
-        # strip empty lines (only whitespaces and newlines)
-        properCmd = "".join([s.strip(" ") for s in cmd.splitlines(True) if s.strip("\t\r\n ")])
-        r = subprocess.run(properCmd, shell=True)
-        if r.returncode != 0:
-            sys.exit(r.returncode)
+    def _install(self, flags: str):
+        __runShellCmd(self._installShellCmd(flags))
 
 
 class GitOSSTool(ShellInstallTool):
@@ -307,10 +347,9 @@ class GitOSSTool(ShellInstallTool):
                 """
 
     @final
-    def installShellCmd(self, flags: str) -> str:
+    def _installShellCmd(self, flags: str) -> str:
         return f"""
                 rm -rf {self.installPath()}
-                set -e
                 cd /tmp
                 git clone {self.repo} {self.name}
                 cd {self.name}
@@ -347,7 +386,7 @@ class InteractivelyDownloadedTool(Tool):
         print(f"Error: {self.name} version `{self.version}` is not supported.")
         sys.exit(1)
 
-    def install(self, flags: str):
+    def _install(self, flags: str):
         print(f"(Remote) Firefox is now opening the {self.vendor} download page for you.")
         print(self.downloadInstructions())
         firefoxPid = subprocess.Popen(
