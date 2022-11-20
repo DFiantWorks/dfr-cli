@@ -71,7 +71,7 @@ def curlGitFolderCmd(repo: str, commit: str, folder: str) -> str:
     return f"curl -L {repo}/tarball/{commit}  | tar --wildcards */{folder} --strip-components={folder.count('/') + 2} -xzC ."
 
 
-def __runShellCmd(cmd: str):
+def runShellCmd(cmd: str):
     withErrCmd = f"""
                   set -e
                   {cmd}
@@ -213,9 +213,12 @@ class Tool:
     def env_extra(self) -> dict[str, str]:
         return {}
 
+    # additional command to run after the rest of environment is set
+    def env_final_run(self) -> str:
+        return ""
+
     def setVersion(self):
         self.version = self.actualVersion(self.versionReq)
-        print(f"version: {self.version}")
         if self.version == "" or (not self._zero_install and not os.path.exists(self.installDirReadyFilePath())):
             print(f"Missing version. Consider running: `dfr install {self.fullName()} {self.versionReq}`")
             sys.exit(1)
@@ -239,6 +242,9 @@ class Tool:
                 f.write("#!/bin/bash\n")
                 f.write(f'{cmdAlias[0]} "$@"')
             os.chmod(f"/usr/bin/{cmdAlias[1]}", 0o777)
+        cmd = self.env_final_run()
+        if cmd != "":
+            runShellCmd(cmd)
 
 
 def getTool(fullName: str, versionReq: str) -> Tool:
@@ -285,17 +291,19 @@ class ShellInstallTool(Tool):
 
     @final
     def _install(self, flags: str):
-        __runShellCmd(self._installShellCmd(flags))
+        runShellCmd(self._installShellCmd(flags))
 
 
 class GitOSSTool(ShellInstallTool):
     repo: str
+    _useTags: bool = False
 
     def __init__(self, domain: str, name: str, versionReq: str, repo: str):
         self.repo = repo
         super().__init__(domain, "oss", name, versionReq)
 
-    # get a set of commits matching a given tag pattern
+    # get a set of commits or tags matching a given tag pattern.
+    # if `retTags` is true then returning tags, otherwise returning commits
     @final
     def getGitTagPatternCommits(self, tagPattern: re.Pattern) -> set[str]:
         command = f"git ls-remote -t {self.repo}"
@@ -304,7 +312,10 @@ class GitOSSTool(ShellInstallTool):
         for ctb in commitsTagsBytes:
             commit, tag = ctb.decode("utf-8").replace("refs/tags/", "").split("\t")
             if re.match(tagPattern, tag) is not None:
-                ret.add(commit)
+                if self._useTags:
+                    ret.add(tag)
+                else:
+                    ret.add(commit)
         return ret
 
     @final
@@ -322,7 +333,7 @@ class GitOSSTool(ShellInstallTool):
         return getNewestVersionFolder(self.toolPathNoVersion(), lambda x: x in commits)
 
     def latestInstallableVersion(self, version: str) -> str:
-        if isCommitVersion(version):
+        if isCommitVersion(version) and not self._useTags:
             if len(version) == 40:
                 return version  # full commit
             else:  # find full version
@@ -332,7 +343,7 @@ class GitOSSTool(ShellInstallTool):
 
     def actualVersion(self, versionReq: str) -> str:
         version = super().actualVersion(versionReq)
-        if isCommitVersion(version):
+        if isCommitVersion(version) and not self._useTags:
             if len(version) == 40:
                 return version  # full commit
             else:  # find full version

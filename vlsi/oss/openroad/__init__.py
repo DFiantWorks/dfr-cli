@@ -32,4 +32,4 @@ class SpecificTool(GitOSSTool):
         ]
 
     def env_extra(self) -> dict[str, str]:
-        return {"OPENROAD": self.linkedPath()}
+        return {"OPENROAD": self.linkedPath(), "OPENROAD_BIN": "openroad"}
