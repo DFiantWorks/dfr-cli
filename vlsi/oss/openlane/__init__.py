@@ -7,6 +7,9 @@ class SpecificTool(GitOSSTool):
     def __init__(self, versionReq: str):
         super().__init__("vlsi", "openlane", versionReq, "https://github.com/The-OpenROAD-Project/OpenLane")
 
+    def siblings(self) -> set[str]:
+        return {"vlsi.oss.pdk"}
+
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
                 mkdir -p {self.installPath()}

@@ -123,6 +123,9 @@ class Tool:
     def dependencies(self) -> dict[str, str]:
         return {}
 
+    def siblings(self) -> set[str]:
+        return set()
+
     @final
     def fullName(self) -> str:
         return f"{self.domain}.{self.vendor}.{self.name}"
@@ -268,7 +271,12 @@ class Tools:
 
     def setup_env(self):
         for t in self.all.items():
-            t[1].setup_env()
+            tool = t[1]
+            for s in tool.siblings():
+                if s not in self.all:
+                    print(f"Error: The tool {tool.fullName()} requires {s} configuration as well!")
+                    sys.exit(1)
+            tool.setup_env()
 
 
 class ZeroInstallTool(Tool):
