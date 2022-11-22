@@ -1,18 +1,22 @@
 import sys
 from dfr_scripts.common import GitOSSTool, downloadAvailable
 
-
+# WIP!!!
+# new versions: https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads
+# old versions: https://developer.arm.com/downloads/-/gnu-rm
+#  curl -L https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.mpacbti-bet1/binrel/arm-gnu-toolchain-12.2.mpacbti-bet1-darwin-x86_64-arm-none-eabi.tar.xz | tar -xJC . --strip-components=1
 class SpecificTool(GitOSSTool):
     def __init__(self, versionReq: str):
-        super().__init__("vlsi", "openpdks", versionReq, "https://github.com/RTimothyEdwards/open_pdks")
+        super().__init__("embedded", "arm_gnu", versionReq, "https://github.com/RTimothyEdwards/open_pdks")
 
     def pdkCmd(self, pdk: str) -> str:
         url = f"https://github.com/efabless/volare/releases/download/{pdk}-{self.version}/default.tar.xz"
         if downloadAvailable(url):
             return f"""
+                    wget {url}
                     mkdir -p {self.installPath()}
-                    cd {self.installPath()}
-                    curl -L {url} | tar -xJC . --strip-components=1
+                    tar -xvf default.tar.xz -C {self.installPath()}
+                    rm default.tar.xz
                     """
         else:
             return ""
