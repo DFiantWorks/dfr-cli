@@ -11,12 +11,16 @@ from abc import abstractmethod
 from typing import final, Callable
 import string
 import stat
+import os
+import yaml
+from collections import OrderedDict
 
 
 class Paths:
     TOOLS = "/mnt/tools"
     ORGTOOLS = "/mnt/orgtools"
     INSTALL = f"{TOOLS}"
+    common = os.path.dirname(os.path.abspath(__file__))
 
 
 paths = Paths()
@@ -116,9 +120,6 @@ class Tool:
                 return self.latestVersion(versionReq)
         else:
             return versionReq
-
-    def dependenciesNoVersions(self) -> set[str]:
-        return set()
 
     def dependencies(self) -> dict[str, str]:
         return {}
@@ -251,32 +252,66 @@ class Tool:
 
 
 def getTool(fullName: str, versionReq: str) -> Tool:
-    if fullName.count(".") != 2:
-        print(f"Expected full name in format <domain>.<vendor>.<name>, but found: {fullName}")
-        sys.exit(1)
     try:
         module = importlib.import_module(f"dfr_scripts.{fullName}")
         return module.SpecificTool(versionReq)
     except ModuleNotFoundError as e:
-        print(f"Missing install script for `{fullName}`")
+        print(f"Missing script for `{fullName}`")
+        sys.exit(1)
+
+
+def getDependencies(fullName: str) -> set[str]:
+    try:
+        module = importlib.import_module(f"dfr_scripts.{fullName}")
+        return module.dependencies
+    except AttributeError as e:
+        return set()
+    except ModuleNotFoundError as e:
+        print(f"Missing script for `{fullName}`")
         sys.exit(1)
 
 
 class Tools:
-    all: dict[str, Tool] = {}
+    all: OrderedDict[str, Tool] = OrderedDict()
 
     def __init__(self, tool_versions_flat: dict[str, str]):
-        for fullName, versionReq in tool_versions_flat.items():
-            self.all[fullName] = getTool(fullName, versionReq)
+        # ordering tools so that if a tool appears as another tool's dependency,
+        # but also as standalone, the standalone will come first and take precedence
+        ordered: list[str] = []
+        toolNames: list[str] = list(tool_versions_flat.keys())
+        while toolNames:
+            head, *tail = toolNames
+            deps: set[str] = getDependencies(head)
+            if deps:
+                goFirst = deps.intersection(toolNames)
+                if goFirst:
+                    toolNames = list(goFirst) + list(set(toolNames) - goFirst)
+                else:
+                    ordered.append(head)
+                    toolNames = tail
+            else:
+                ordered.append(head)
+                toolNames = tail
+        for fullName in ordered:
+            self.all[fullName] = getTool(fullName, tool_versions_flat[fullName])
 
     def setup_env(self):
-        for t in self.all.items():
-            tool = t[1]
+        setTools: set[str] = set()
+        tools: list[Tool] = list(self.all.values())
+        while tools:
+            tool, *tail = tools
+            tools = tail
+            # verifying existence of sibling configuration
             for s in tool.siblings():
                 if s not in self.all:
                     print(f"Error: The tool {tool.fullName()} requires {s} configuration as well!")
                     sys.exit(1)
             tool.setup_env()
+            setTools.add(tool.fullName())
+            # if we have dependencies, we set them up as well
+            for depFullName, depVersionReq in tool.dependencies().items():
+                if depFullName not in setTools:
+                    tools = [getTool(depFullName, depVersionReq)] + tools
 
 
 class ZeroInstallTool(Tool):
