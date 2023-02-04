@@ -14,7 +14,7 @@ remote_control:
   #The protocol of the remote control
   #Use `rdp` for RDP protocol. By default, DFR will invoke an RDP client according to your OS.
   #Use `vnc` for VNC protocol. By default, DFR will invoke your default browser for control.
-  #Use `none` to disable remote control.
+  #Use `off` to disable remote control.
   #Notes:
   #The RDP route supports clipboard copy-paste between the remote and local machines.
   #The VNC route does not currently support clipboard copy-paste between the remote and local machines.
