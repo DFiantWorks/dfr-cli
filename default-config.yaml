@@ -7,6 +7,9 @@ session:
   #Session timeout in hours
   #Default = 8
   timeout_hours: 8
+  #Runner version
+  #Default = latest
+  runner_version: latest
 
 #Remote Control settings
 #-----------------------
