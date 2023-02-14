@@ -4,9 +4,9 @@
 #Session settings
 #----------------
 session:
-  #Session timeout in hours
-  #Default = 8
-  timeout_hours: 8
+  #Session timeout in minutes
+  #Default = 480
+  timeout_minutes: 480
   #Runner version
   #Default = latest
   runner_version: latest
