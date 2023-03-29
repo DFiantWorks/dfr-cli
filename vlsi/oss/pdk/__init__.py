@@ -2,7 +2,7 @@ from dfr_scripts.common import ZeroInstallTool
 
 
 class SpecificTool(ZeroInstallTool):
-    def actualVersion(self, versionReq: str) -> str:
+    def actualVersion(self, toolMnt: str, versionReq: str) -> str:
         if versionReq in {"sky130A", "sky130B", "gf180mcuA", "gf180mcuB", "gf180mcuC"}:
             return versionReq
         else:

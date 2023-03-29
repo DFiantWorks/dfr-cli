@@ -17,9 +17,6 @@ from collections import OrderedDict
 
 
 class Paths:
-    TOOLS = "/mnt/tools"
-    ORGTOOLS = "/mnt/orgtools"
-    INSTALL = f"{TOOLS}"
     common = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -93,6 +90,7 @@ class Tool:
     name: str
     versionReq: str
     version: str
+    toolMnt: str
     _zero_install: bool = False
 
     def __init__(self, domain: str, vendor: str, name: str, versionReq: str):
@@ -104,12 +102,12 @@ class Tool:
     def latestInstallableVersion(self, pattern: str) -> str:
         return self.versionReq
 
-    def latestVersion(self, pattern: str) -> str:
+    def latestVersion(self, toolMnt: str, pattern: str) -> str:
         return getNewestVersionFolder(
-            self.toolPathNoVersion(), lambda x: re.match(wildcardToRegex(pattern), x) is not None
+            self.toolPathNoVersion(toolMnt), lambda x: re.match(wildcardToRegex(pattern), x) is not None
         )
 
-    def actualVersion(self, versionReq: str) -> str:
+    def actualVersion(self, toolMnt: str, versionReq: str) -> str:
         # requests latest
         if "*" in versionReq or "?" in versionReq:
             # has concrete version specified
@@ -117,7 +115,7 @@ class Tool:
                 req, concrete = versionReq.split(":")
                 return concrete
             else:
-                return self.latestVersion(versionReq)
+                return self.latestVersion(toolMnt, versionReq)
         else:
             return versionReq
 
@@ -136,8 +134,9 @@ class Tool:
         pass
 
     @final
-    def install(self, flags: str):
+    def install(self, toolMnt: str, flags: str):
         self.version = self.latestInstallableVersion(self.versionReq)
+        self.toolMnt = toolMnt
         if os.path.exists(self.installDirReadyFilePath()):
             print(f"Tool folder for {self.fullName()} with version {self.version} already exists.")
             sys.exit(1)
@@ -162,11 +161,11 @@ class Tool:
             checkedFlags = self._demoAsk()
         self._demo(checkedFlags)
 
-    def toolPathNoVersion(self) -> str:
-        return f"{paths.INSTALL}/{self.domain}/{self.vendor}/{self.name}"
+    def toolPathNoVersion(self, toolMnt: str) -> str:
+        return f"/mnt/{toolMnt}/{self.domain}/{self.vendor}/{self.name}"
 
     def installPath(self) -> str:
-        return f"{self.toolPathNoVersion()}/{self.version}"
+        return f"{self.toolPathNoVersion(self.toolMnt)}/{self.version}"
 
     def installDirReadyFilePath(self) -> str:
         return installDirReadyFile(self.installPath())
@@ -371,9 +370,9 @@ class GitOSSTool(ShellInstallTool):
                 return commit
         return ""
 
-    def latestVersion(self, pattern: str) -> str:
+    def latestVersion(self, toolMnt: str, pattern: str) -> str:
         commits = self.getGitTagPatternCommits(wildcardToRegex(pattern))
-        return getNewestVersionFolder(self.toolPathNoVersion(), lambda x: x in commits)
+        return getNewestVersionFolder(self.toolPathNoVersion(toolMnt), lambda x: x in commits)
 
     def latestInstallableVersion(self, version: str) -> str:
         if isCommitVersion(version) and not self._useTags:
@@ -384,15 +383,15 @@ class GitOSSTool(ShellInstallTool):
         else:
             return self.getGitTagPatternCommits(wildcardToRegex(version)).pop()
 
-    def actualVersion(self, versionReq: str) -> str:
-        version = super().actualVersion(versionReq)
+    def actualVersion(self, toolMnt: str, versionReq: str) -> str:
+        version = super().actualVersion(toolMnt, versionReq)
         if isCommitVersion(version) and not self._useTags:
             if len(version) == 40:
                 return version  # full commit
             else:  # find full version
-                return getNewestVersionFolder(self.toolPathNoVersion(), lambda x: x.startswith(versionReq))
+                return getNewestVersionFolder(self.toolPathNoVersion(toolMnt), lambda x: x.startswith(versionReq))
         else:
-            return self.latestVersion(version)
+            return self.latestVersion(toolMnt, version)
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
