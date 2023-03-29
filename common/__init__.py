@@ -403,6 +403,7 @@ class GitOSSTool(ShellInstallTool):
     def _installShellCmd(self, flags: str) -> str:
         return f"""
                 rm -rf {self.installPath()}
+                rm -rf /tmp/{self.name}
                 cd /tmp
                 git clone {self.repo} {self.name}
                 cd {self.name}
@@ -410,6 +411,7 @@ class GitOSSTool(ShellInstallTool):
                 TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
                 {self.buildAndInstallShellCmd(flags)}
                 touch -a -m -t $TIMEDATE {self.installDirReadyFilePath()}
+                rm -rf /tmp/{self.name}
                 """
 
 
