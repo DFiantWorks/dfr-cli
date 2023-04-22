@@ -134,13 +134,27 @@ class Tool:
         pass
 
     @final
-    def install(self, toolMnt: str, flags: str):
+    def isInstalled(self) -> bool:
+        return os.path.exists(self.installDirReadyFilePath())
+
+    @final
+    def installDependencies(self, toolMnt: str):
+        # if we have dependencies, we install them up as well
+        for depFullName, depVersionReq in self.dependencies().items():
+            getTool(depFullName, depVersionReq).install(toolMnt, "", True)
+
+    @final
+    def install(self, toolMnt: str, flags: str, withToolDeps: bool):
         self.version = self.latestInstallableVersion(self.versionReq)
         self.toolMnt = toolMnt
-        if os.path.exists(self.installDirReadyFilePath()):
-            print(f"Tool folder for {self.fullName()} with version {self.version} already exists.")
-            sys.exit(1)
-        self._install(flags)
+        if self.isInstalled():
+            print(f"Found exiting tool `{self.fullName()}` with version `{self.version}`.")
+        else:
+            print(f"Installing tool `{self.fullName()}` with version `{self.version}`...")
+            self._install(flags)
+        if withToolDeps and self.dependencies():
+            print(f"Installing tool dependencies of `{self.fullName()}`...")
+            self.installDependencies(toolMnt)
 
     @final
     def _noDemoErr(self):
@@ -222,7 +236,7 @@ class Tool:
 
     def setVersion(self):
         self.version = self.actualVersion(self.versionReq)
-        if self.version == "" or (not self._zero_install and not os.path.exists(self.installDirReadyFilePath())):
+        if self.version == "" or (not self._zero_install and not self.isInstalled()):
             print(f"Missing version. Consider running: `dfr install {self.fullName()} {self.versionReq}`")
             sys.exit(1)
 
