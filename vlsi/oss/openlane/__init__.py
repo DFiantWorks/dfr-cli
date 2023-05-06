@@ -22,7 +22,7 @@ class SpecificTool(GitOSSTool):
 
     def dependencies(self) -> dict[str, str]:
         ret: dict[str, str] = {}
-        with open(f"{self.linkedPath()}/dependencies/tool_metadata.yml") as file:
+        with open(f"{self.installPath()}/dependencies/tool_metadata.yml") as file:
             tool_metadata = yaml.safe_load(file)
             for tool in tool_metadata:
                 name = tool["name"]
