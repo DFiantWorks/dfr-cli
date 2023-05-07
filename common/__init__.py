@@ -6,7 +6,7 @@ import sys
 import importlib.util
 import requests
 import re
-from typing import Dict
+from typing import Dict, Optional
 from abc import abstractmethod
 from typing import final, Callable
 import string
@@ -14,6 +14,8 @@ import stat
 import os
 import yaml
 from collections import OrderedDict
+import re
+from urllib.parse import urlparse
 
 
 class Paths:
@@ -21,6 +23,45 @@ class Paths:
 
 
 paths = Paths()
+
+
+def extract_owner_and_repo_from_github_url(github_url):
+    parsed_url = urlparse(github_url)
+
+    if parsed_url.netloc == "github.com":
+        match = re.match(r"^/([^/]+)/([^/]+)", parsed_url.path)
+
+        if match:
+            owner, repo = match.groups()
+            # Remove .git extension if present
+            repo = re.sub(r"\.git$", "", repo)
+            return owner, repo
+        else:
+            print("Invalid GitHub URL format.")
+            return sys.exit(1)
+    else:
+        print("URL is not a GitHub URL.")
+        return sys.exit(1)
+
+
+def get_submodule_commit_hash(ownerName: str, repoName: str, submodulePath: str, ref: str) -> Optional[str]:
+    try:
+        url = f"https://api.github.com/repos/{ownerName}/{repoName}/contents/{submodulePath}?ref={ref}"
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            submodule_info = response.json()
+            if submodule_info["type"] == "submodule":
+                commit_hash = submodule_info["sha"]
+                return commit_hash
+            else:
+                print("The specified path is not a submodule.")
+                sys.exit(1)
+        else:
+            return None
+    except Exception as e:
+        print(f"Error while getting the submodule commit hash: {str(e)}")
+        sys.exit(1)
 
 
 def addEnvPaths(envName: str, paths: list[str]) -> None:
@@ -365,6 +406,11 @@ class GitOSSTool(ShellInstallTool):
     def __init__(self, domain: str, name: str, versionReq: str, repo: str):
         self.repo = repo
         super().__init__(domain, "oss", name, versionReq)
+
+    @final
+    def getGitSubmoduleCommit(self, submoduleName: str) -> Optional[str]:
+        ownerName, repoName = extract_owner_and_repo_from_github_url(self.repo)
+        return get_submodule_commit_hash(ownerName, repoName, submoduleName, self.version)
 
     # get a set of commits or tags matching a given tag pattern.
     # if `retTags` is true then returning tags, otherwise returning commits
