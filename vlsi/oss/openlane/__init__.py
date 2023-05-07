@@ -52,7 +52,6 @@ class SpecificTool(GitOSSTool):
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
-                mkdir -p {self.installPath()}
                 rm -rf *.git
                 rm -rf *.github
                 rm -rf designs

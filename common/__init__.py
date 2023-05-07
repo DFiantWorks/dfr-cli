@@ -3,7 +3,7 @@ import shlex
 import os
 import time
 import sys
-import importlib
+import importlib.util
 import requests
 import re
 from typing import Dict
@@ -264,24 +264,32 @@ class Tool:
             runShellCmd(cmd)
 
 
-def getTool(fullName: str, versionReq: str) -> Tool:
+def getToolModule(fullName: str):
     try:
-        module = importlib.import_module(f"dfr_scripts.{fullName}")
-        return module.SpecificTool(versionReq)
-    except ModuleNotFoundError as e:
+        module_name = f"dfr_scripts.{fullName}"
+        spec = importlib.util.spec_from_file_location(
+            module_name, f"/etc/dfr/dfr_scripts/{fullName.replace('.','/')}/__init__.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        return module
+    except FileNotFoundError:
         print(f"Missing script for `{fullName}`")
         sys.exit(1)
+
+
+def getTool(fullName: str, versionReq: str) -> Tool:
+    module = getToolModule(fullName)
+    return module.SpecificTool(versionReq)
 
 
 def getDependencies(fullName: str) -> set[str]:
     try:
-        module = importlib.import_module(f"dfr_scripts.{fullName}")
+        module = getToolModule(fullName)
         return module.dependencies
-    except AttributeError as e:
+    except AttributeError:
         return set()
-    except ModuleNotFoundError as e:
-        print(f"Missing script for `{fullName}`")
-        sys.exit(1)
 
 
 class Tools:
@@ -413,15 +421,31 @@ class GitOSSTool(ShellInstallTool):
                 exit 1
                 """
 
+    def recursiveClone(self) -> bool:
+        return False
+
+    def acceptCloneError(self) -> bool:
+        return False
+
     @final
     def _installShellCmd(self, flags: str) -> str:
+        recursiveFlag = ""
+        recursiveCheckout = ""
+        if self.recursiveClone():
+            recursiveFlag = "--recursive"
+            recursiveCheckout = "git submodule update --init --recursive"
+        acceptErr = ""
+        if self.acceptCloneError():
+            acceptErr = "|| true"
         return f"""
                 rm -rf {self.installPath()}
+                mkdir -p {self.installPath()}
                 rm -rf /tmp/{self.name}
                 cd /tmp
-                git clone {self.repo} {self.name}
+                git clone {recursiveFlag} {self.repo} {self.name} {acceptErr}
                 cd {self.name}
                 git checkout {self.version}
+                {recursiveCheckout}
                 TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
                 {self.buildAndInstallShellCmd(flags)}
                 touch -a -m -t $TIMEDATE {self.installDirReadyFilePath()}

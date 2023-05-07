@@ -5,9 +5,11 @@ class SpecificTool(GitOSSTool):
     def __init__(self, versionReq: str):
         super().__init__("vlsi", "openroad", versionReq, "https://github.com/The-OpenROAD-Project/OpenROAD")
 
+    def recursiveClone(self) -> bool:
+        return True
+
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
-                git submodule update --init --recursive
                 mkdir -p build
                 cd build
                 cmake .. -DCMAKE_INSTALL_PREFIX={self.installPath()}

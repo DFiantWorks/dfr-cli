@@ -10,7 +10,6 @@ class SpecificTool(GitOSSTool):
         url = f"https://github.com/efabless/volare/releases/download/{pdk}-{self.version}/default.tar.xz"
         if downloadAvailable(url):
             return f"""
-                    mkdir -p {self.installPath()}
                     cd {self.installPath()}
                     curl -L {url} | tar -xJC . --strip-components=1
                     """

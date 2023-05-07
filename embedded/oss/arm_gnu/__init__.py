@@ -1,6 +1,7 @@
 import sys
 from dfr_scripts.common import GitOSSTool, downloadAvailable
 
+
 # WIP!!!
 # new versions: https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads
 # old versions: https://developer.arm.com/downloads/-/gnu-rm
@@ -14,7 +15,6 @@ class SpecificTool(GitOSSTool):
         if downloadAvailable(url):
             return f"""
                     wget {url}
-                    mkdir -p {self.installPath()}
                     tar -xvf default.tar.xz -C {self.installPath()}
                     rm default.tar.xz
                     """
