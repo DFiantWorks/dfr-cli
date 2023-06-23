@@ -66,7 +66,7 @@ class SpecificTool(GitOSSTool):
         ]
 
     def env_extra(self) -> dict[str, str]:
-        return {"OPENLANE_ROOT": self.linkedPath(), "OPENLANE_TAG": self.version}
+        return {"OPENLANE_ROOT": self.linkedPath(), "OPENLANE_TAG": self.versionLoc.version}
 
     def cmdAliases(self) -> list[tuple[str, str]]:
         return [(f"{self.linkedPath()}/flow.tcl", "openlane")]

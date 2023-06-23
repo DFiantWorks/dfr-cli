@@ -125,13 +125,21 @@ def runShellCmd(cmd: str):
         sys.exit(r.returncode)
 
 
+class VersionLoc:
+    toolMnt: str
+    version: str
+
+    def __init__(self, toolMnt: str, version: str):
+        self.toolMnt = toolMnt
+        self.version = version
+
+
 class Tool:
     domain: str
     vendor: str
     name: str
     versionReq: str
-    version: str
-    toolMnt: str
+    versionLoc: VersionLoc
     _zero_install: bool = False
 
     def __init__(self, domain: str, vendor: str, name: str, versionReq: str):
@@ -143,22 +151,27 @@ class Tool:
     def latestInstallableVersion(self, pattern: str) -> str:
         return self.versionReq
 
-    def latestVersion(self, toolMnt: str, pattern: str) -> str:
-        return getNewestVersionFolder(
-            self.toolPathNoVersion(toolMnt), lambda x: re.match(wildcardToRegex(pattern), x) is not None
+    def latestVersion(self, pattern: str) -> VersionLoc:
+        toolMnt = "mytools"
+        return VersionLoc(
+            toolMnt,
+            getNewestVersionFolder(
+                self._toolPathNoVersion(toolMnt), lambda x: re.match(wildcardToRegex(pattern), x) is not None
+            ),
         )
 
-    def actualVersion(self, toolMnt: str, versionReq: str) -> str:
+    def actualVersion(self, versionReq: str) -> VersionLoc:
+        toolMnt = "mytools"
         # requests latest
         if "*" in versionReq or "?" in versionReq:
             # has concrete version specified
             if ":" in versionReq:
                 req, concrete = versionReq.split(":")
-                return concrete
+                return VersionLoc(toolMnt, concrete)
             else:
-                return self.latestVersion(toolMnt, versionReq)
+                return self.latestVersion(versionReq)
         else:
-            return versionReq
+            return VersionLoc(toolMnt, versionReq)
 
     def dependencies(self) -> dict[str, str]:
         return {}
@@ -175,27 +188,47 @@ class Tool:
         pass
 
     @final
-    def isInstalled(self) -> bool:
-        return os.path.exists(self.installDirReadyFilePath())
+    def getInstalledToolMnt(self, version: str) -> Optional[str]:
+        if os.path.exists(self.installDirReadyFilePath(toolMntOpt="osstools", versionOpt=version)):
+            return "osstools"
+        elif os.path.exists(self.installDirReadyFilePath(toolMntOpt="orgtools", versionOpt=version)):
+            return "orgtools"
+        elif os.path.exists(self.installDirReadyFilePath(toolMntOpt="mytools", versionOpt=version)):
+            return "mytools"
+        else:
+            return None
 
     @final
-    def installDependencies(self, toolMnt: str):
+    def isInstalled(self) -> bool:
+        if self.getInstalledToolMnt(self.versionLoc.version):
+            return True
+        else:
+            return False
+
+    @final
+    def installDependencies(self, toolMntReq: str):
         # if we have dependencies, we install them up as well
         for depFullName, depVersionReq in self.dependencies().items():
-            getTool(depFullName, depVersionReq).install(toolMnt, "", True)
+            getTool(depFullName, depVersionReq).install(toolMntReq, "", True)
 
     @final
-    def install(self, toolMnt: str, flags: str, withToolDeps: bool):
-        self.version = self.latestInstallableVersion(self.versionReq)
-        self.toolMnt = toolMnt
-        if self.isInstalled():
-            print(f"Found exiting tool `{self.fullName()}` with version `{self.version}`.")
+    def install(self, toolMntReq: str, flags: str, withToolDeps: bool):
+        version = self.latestInstallableVersion(self.versionReq)
+        toolMnt: str
+        installedToolMnt = self.getInstalledToolMnt(version)
+        if installedToolMnt:
+            toolMnt = installedToolMnt
         else:
-            print(f"Installing tool `{self.fullName()}` with version `{self.version}`...")
+            toolMnt = toolMntReq
+        self.versionLoc = VersionLoc(toolMnt=toolMnt, version=version)
+        if installedToolMnt:
+            print(f"Found exiting tool `{self.fullName()}` with version `{version}` under mount `{toolMnt}`.")
+        else:
+            print(f"Installing tool `{self.fullName()}` with version `{version}` under mount `{toolMnt}`...")
             self._install(flags)
         if withToolDeps and self.dependencies():
             print(f"Installing tool dependencies of `{self.fullName()}`...")
-            self.installDependencies(toolMnt)
+            self.installDependencies(toolMntReq)
 
     @final
     def _noDemoErr(self):
@@ -216,14 +249,27 @@ class Tool:
             checkedFlags = self._demoAsk()
         self._demo(checkedFlags)
 
-    def toolPathNoVersion(self, toolMnt: str) -> str:
+    @final
+    def _toolPathNoVersion(self, toolMnt: str) -> str:
         return f"/mnt/{toolMnt}/{self.domain}/{self.vendor}/{self.name}"
 
-    def installPath(self) -> str:
-        return f"{self.toolPathNoVersion(self.toolMnt)}/{self.version}"
+    @final
+    def installPath(self, toolMntOpt: Optional[str] = None, versionOpt: Optional[str] = None) -> str:
+        toolMnt: str
+        if toolMntOpt:
+            toolMnt = toolMntOpt
+        else:
+            toolMnt = self.versionLoc.toolMnt
+        version: str
+        if versionOpt:
+            version = versionOpt
+        else:
+            version = self.versionLoc.version
+        return f"{self._toolPathNoVersion(toolMnt)}/{version}"
 
-    def installDirReadyFilePath(self) -> str:
-        return installDirReadyFile(self.installPath())
+    @final
+    def installDirReadyFilePath(self, toolMntOpt: Optional[str] = None, versionOpt: Optional[str] = None) -> str:
+        return installDirReadyFile(self.installPath(toolMntOpt=toolMntOpt, versionOpt=versionOpt))
 
     def linkedPath(self) -> str:
         return f"/opt/{self.name}"
@@ -276,8 +322,8 @@ class Tool:
         return ""
 
     def setVersion(self):
-        self.version = self.actualVersion(self.versionReq)
-        if self.version == "" or (not self._zero_install and not self.isInstalled()):
+        self.versionLoc = self.actualVersion(self.versionReq)
+        if self.versionLoc.version == "" or (not self._zero_install and not self.isInstalled()):
             print(f"Missing version. Consider running: `dfr install {self.fullName()} {self.versionReq}`")
             sys.exit(1)
 
@@ -410,7 +456,7 @@ class GitOSSTool(ShellInstallTool):
     @final
     def getGitSubmoduleCommit(self, submoduleName: str) -> Optional[str]:
         ownerName, repoName = extract_owner_and_repo_from_github_url(self.repo)
-        return get_submodule_commit_hash(ownerName, repoName, submoduleName, self.version)
+        return get_submodule_commit_hash(ownerName, repoName, submoduleName, self.versionLoc.version)
 
     # get a set of commits or tags matching a given tag pattern.
     # if `retTags` is true then returning tags, otherwise returning commits
@@ -438,9 +484,10 @@ class GitOSSTool(ShellInstallTool):
                 return commit
         return ""
 
-    def latestVersion(self, toolMnt: str, pattern: str) -> str:
+    def latestVersion(self, pattern: str) -> VersionLoc:
+        toolMnt = "mytools"
         commits = self.getGitTagPatternCommits(wildcardToRegex(pattern))
-        return getNewestVersionFolder(self.toolPathNoVersion(toolMnt), lambda x: x in commits)
+        return VersionLoc(toolMnt, getNewestVersionFolder(self._toolPathNoVersion(toolMnt), lambda x: x in commits))
 
     def latestInstallableVersion(self, version: str) -> str:
         if isCommitVersion(version) and not self._useTags:
@@ -451,15 +498,19 @@ class GitOSSTool(ShellInstallTool):
         else:
             return self.getGitTagPatternCommits(wildcardToRegex(version)).pop()
 
-    def actualVersion(self, toolMnt: str, versionReq: str) -> str:
-        version = super().actualVersion(toolMnt, versionReq)
-        if isCommitVersion(version) and not self._useTags:
-            if len(version) == 40:
-                return version  # full commit
+    def actualVersion(self, versionReq: str) -> VersionLoc:
+        toolMnt = "mytools"
+        versionLoc = super().actualVersion(versionReq)
+        if isCommitVersion(versionLoc.version) and not self._useTags:
+            if len(versionLoc.version) == 40:
+                return versionLoc  # full commit
             else:  # find full version
-                return getNewestVersionFolder(self.toolPathNoVersion(toolMnt), lambda x: x.startswith(versionReq))
+                return VersionLoc(
+                    toolMnt,
+                    getNewestVersionFolder(self._toolPathNoVersion(toolMnt), lambda x: x.startswith(versionReq)),
+                )
         else:
-            return self.latestVersion(toolMnt, version)
+            return self.latestVersion(versionLoc.version)
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
@@ -490,7 +541,7 @@ class GitOSSTool(ShellInstallTool):
                 cd /tmp
                 git clone {recursiveFlag} {self.repo} {self.name} {acceptErr}
                 cd {self.name}
-                git checkout {self.version}
+                git checkout {self.versionLoc.version}
                 {recursiveCheckout}
                 TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
                 {self.buildAndInstallShellCmd(flags)}
@@ -522,7 +573,7 @@ class InteractivelyDownloadedTool(Tool):
         pass
 
     def unsupportedVersionErr(self):
-        print(f"Error: {self.name} version `{self.version}` is not supported.")
+        print(f"Error: {self.name} version `{self.versionLoc.version}` is not supported.")
         sys.exit(1)
 
     def _install(self, flags: str):
@@ -562,7 +613,7 @@ class XilinxTool(InteractivelyDownloadedTool):
     # TODO: consider replacing with webcrawling techniques instead of a fixed lookup
     def downloadFileName(self) -> str:
         try:
-            return self.versionToFileNameMap()[self.version]
+            return self.versionToFileNameMap()[self.versionLoc.version]
         except:
             return self.unsupportedVersionErr()
 
