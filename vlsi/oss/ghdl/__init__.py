@@ -1,5 +1,6 @@
 from dfr_scripts.common import GitOSSTool
 
+
 # TODO: figure out how to allow llvm and gcc versions
 class SpecificTool(GitOSSTool):
     def __init__(self, versionReq: str):
@@ -9,5 +10,5 @@ class SpecificTool(GitOSSTool):
         return f"""
                 ./configure --prefix={self.installPath()}
                 make -j`nproc`
-                make install
+                sudo make install
                 """

@@ -10,11 +10,11 @@ class SpecificTool(GitOSSTool):
                 ./configure
                 cd src
                 make vlog2Verilog && make vlog2Spice
-                mkdir -p {self.installPath()}/bin
-                cp vlog2Verilog {self.installPath()}/bin/
-                cp vlog2Spice {self.installPath()}/bin/
+                sudo mkdir -p {self.installPath()}/bin
+                sudo cp vlog2Verilog {self.installPath()}/bin/
+                sudo cp vlog2Spice {self.installPath()}/bin/
                 cd ../scripts
                 make spi2xspice.py
                 chmod +x spi2xspice.py
-                cp spi2xspice.py {self.installPath()}/bin/
+                sudo cp spi2xspice.py {self.installPath()}/bin/
                 """

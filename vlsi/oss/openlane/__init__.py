@@ -56,7 +56,7 @@ class SpecificTool(GitOSSTool):
                 rm -rf *.github
                 rm -rf designs
                 rm -rf docker
-                cp -r * {self.installPath()}/
+                sudo cp -r * {self.installPath()}/
                 """
 
     def env_path(self) -> list[str]:

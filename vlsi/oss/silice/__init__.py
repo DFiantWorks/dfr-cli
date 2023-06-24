@@ -13,10 +13,10 @@ class SpecificTool(GitOSSTool):
                 mkdir -p build
                 cd build
                 cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" ..
-                make -j`nproc` install
-                cp -r ../bin {self.installPath()}/
-                cp -r ../lib {self.installPath()}/
-                cp -r ../frameworks {self.installPath()}/
-                mkdir -p {self.installPath()}/src
-                cp -r ../src/libs {self.installPath()}/src/
+                sudo make -j`nproc` install
+                sudo cp -r ../bin {self.installPath()}/
+                sudo cp -r ../lib {self.installPath()}/
+                sudo cp -r ../frameworks {self.installPath()}/
+                sudo mkdir -p {self.installPath()}/src
+                sudo cp -r ../src/libs {self.installPath()}/src/
                 """

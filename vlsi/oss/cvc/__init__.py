@@ -1,5 +1,6 @@
 from dfr_scripts.common import GitOSSTool
 
+
 # TODO: old version require pyinstaller and cause problems in installation:
 # https://github.com/d-m-bailey/cvc/issues/241
 class SpecificTool(GitOSSTool):
@@ -11,5 +12,5 @@ class SpecificTool(GitOSSTool):
                 autoreconf -vif
                 ./configure --disable-nls --prefix={self.installPath()}
                 make -j`nproc`
-                make install
+                sudo make install
                 """

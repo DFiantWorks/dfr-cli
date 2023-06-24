@@ -11,7 +11,7 @@ class SpecificTool(GitOSSTool):
                 ./autoconf.sh
                 ./configure --prefix={self.installPath()}
                 make -j`nproc`
-                make install
+                sudo make install
                 """
 
     def env_man_path(self) -> list[str]:

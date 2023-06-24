@@ -9,5 +9,5 @@ class SpecificTool(GitOSSTool):
         return f"""
                 ./configure --prefix={self.installPath()}
                 make -j`nproc`
-                make install
+                sudo make install
                 """

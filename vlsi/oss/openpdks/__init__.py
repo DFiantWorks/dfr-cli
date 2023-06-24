@@ -11,7 +11,7 @@ class SpecificTool(GitOSSTool):
         if downloadAvailable(url):
             return f"""
                     cd {self.installPath()}
-                    curl -L {url} | tar -xJC . --strip-components=1
+                    sudo curl -L {url} | tar -xJC . --strip-components=1
                     """
         else:
             return ""

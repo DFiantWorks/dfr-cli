@@ -14,7 +14,7 @@ class SpecificTool(GitOSSTool):
                 cd build
                 cmake .. -DCMAKE_INSTALL_PREFIX={self.installPath()}
                 make -j`nproc`  
-                make install
+                sudo make install
                 """
 
     def env_path(self) -> list[str]:

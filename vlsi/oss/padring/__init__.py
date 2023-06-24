@@ -10,6 +10,6 @@ class SpecificTool(GitOSSTool):
                 bash ./bootstrap.sh 
                 cd build/ 
                 ninja
-                mkdir -p {self.installPath()}/bin 
-                cp padring {self.installPath()}/bin/
+                sudo mkdir -p {self.installPath()}/bin 
+                sudo cp padring {self.installPath()}/bin/
                 """

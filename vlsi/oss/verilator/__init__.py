@@ -1,5 +1,6 @@
 from dfr_scripts.common import GitOSSTool
 
+
 # TODO: Add integration with SystemC https://verilator.org/guide/latest/install.html#install-systemc
 class SpecificTool(GitOSSTool):
     def __init__(self, versionReq: str):
@@ -11,7 +12,7 @@ class SpecificTool(GitOSSTool):
                 autoconf         
                 ./configure --prefix {self.installPath()}
                 make -j`nproc`  
-                make install
+                sudo make install
                 """
 
     def env_man_path(self) -> list[str]:

@@ -548,9 +548,9 @@ class GitOSSTool(ShellInstallTool):
         if self.acceptCloneError():
             acceptErr = "|| true"
         return f"""
-                rm -rf {self.installPath()}
-                mkdir -p {self.installPath()}
-                rm -rf /tmp/{self.name}
+                sudo rm -rf {self.installPath()}
+                sudo mkdir -p {self.installPath()}
+                sudo rm -rf /tmp/{self.name}
                 cd /tmp
                 git clone {recursiveFlag} {self.repo} {self.name} {acceptErr}
                 cd {self.name}
@@ -558,8 +558,8 @@ class GitOSSTool(ShellInstallTool):
                 {recursiveCheckout}
                 TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
                 {self.buildAndInstallShellCmd(flags)}
-                touch -a -m -t $TIMEDATE {self.installDirReadyFilePath()}
-                rm -rf /tmp/{self.name}
+                sudo touch -a -m -t $TIMEDATE {self.installDirReadyFilePath()}
+                sudo rm -rf /tmp/{self.name}
                 """
 
 
@@ -568,14 +568,14 @@ class InteractivelyDownloadedTool(Tool):
         super().__init__(domain, vendor, name, versionReq)
 
     # all firefox downloads will be automatically placed here
-    downloadsPath = "~/Downloads"
+    downloadsPath = os.path.expanduser("~/Downloads")
 
     @abstractmethod
     def downloadFileName(self) -> str:
         pass
 
     def downloadedFilePath(self) -> str:
-        return f"{self.downloadsPath}{self.downloadFileName()}"
+        return f"{self.downloadsPath}/{self.downloadFileName()}"
 
     @abstractmethod
     def downloadURL(self) -> str:
@@ -589,69 +589,40 @@ class InteractivelyDownloadedTool(Tool):
         print(f"Error: {self.name} version `{self.versionLoc.version}` is not supported.")
         sys.exit(1)
 
+    def _downloadWithFirefox(self, downloadedFilePath: str, downloadURL: str):
+        if os.path.exists(downloadedFilePath) and os.path.getsize(downloadedFilePath) != 0:
+            print(f"Installation already downloaded.")
+        else:
+            print(f"(Remote) Firefox is now opening the {self.vendor} download page for you.")
+            print(self.downloadInstructions())
+            firefoxPid = subprocess.Popen(
+                ["firefox", downloadURL],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if os.path.exists(downloadedFilePath):
+                os.remove(downloadedFilePath)
+            print(f"Waiting for start of file download at {downloadedFilePath}...")
+            while not os.path.exists(downloadedFilePath):
+                time.sleep(1)
+            print("Start of download detected.")
+            print("Waiting for end of download (do not close the firefox browser)...")
+            while os.path.getsize(downloadedFilePath) == 0:
+                time.sleep(1)
+            print("Download completed!")
+            firefoxPid.terminate()
+
     def _install(self, flags: str):
-        print(f"(Remote) Firefox is now opening the {self.vendor} download page for you.")
-        print(self.downloadInstructions())
-        firefoxPid = subprocess.Popen(
-            ["firefox", self.downloadURL()],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
         downloadedFilePath = self.downloadedFilePath()
-        print("Waiting for start of file download...")
-        while not os.path.exists(downloadedFilePath):
-            time.sleep(1)
-        print("Start of download detected.")
-        print("Waiting for end of download (do not close the firefox browser)...")
-        while os.path.getsize(downloadedFilePath) == 0:
-            time.sleep(1)
-        print("Download completed!")
-        firefoxPid.terminate()
+        self._downloadWithFirefox(downloadedFilePath, self.downloadURL())
         print("Extracting setup...")
         self.extract()
+        os.remove(downloadedFilePath)
+        self.postDownloadInstall(flags)
 
     def extract(self):
         pass
 
-
-class XilinxTool(InteractivelyDownloadedTool):
-    def __init__(self, name: str, versionReq: str):
-        super().__init__("vlsi", "Xilinx", name, versionReq)
-
-    @abstractmethod
-    def versionToFileNameMap(self) -> Dict[str, str]:
+    def postDownloadInstall(self, flags: str):
         pass
-
-    # TODO: consider replacing with webcrawling techniques instead of a fixed lookup
-    def downloadFileName(self) -> str:
-        try:
-            return self.versionToFileNameMap()[self.versionLoc.version]
-        except:
-            return self.unsupportedVersionErr()
-
-    def downloadURL(self) -> str:
-        return f"https://www.xilinx.com/member/forms/download/xef.html?filename={self.downloadFileName()}"
-
-    def downloadInstructions(self) -> str:
-        return "Login with your Xilinx account and then click on the Download button at the bottom of the page."
-
-
-class Vivado(XilinxTool):
-    def __init__(self, versionReq: str):
-        super().__init__("Vivado", versionReq)
-
-    def versionToFileNameMap(self) -> Dict[str, str]:
-        return {
-            "2022.1": "Xilinx_Unified_2022.1_0420_0327_Lin64.bin",
-            "2021.2": "Xilinx_Unified_2021.2_1021_0703_Lin64.bin",
-            "2021.1": "Xilinx_Unified_2021.1_0610_2318_Lin64.bin",
-            "2020.3": "Xilinx_Unified_2020.3_0407_2214_Lin64.bin",
-            "2020.2": "Xilinx_Unified_2020.2_1118_1232_Lin64.bin",
-            "2020.1": "Xilinx_Unified_2020.1_0602_1208_Lin64.bin",
-        }
-
-    def extract(self):
-        downloadedFilePath = self.downloadedFilePath()
-        os.chmod(downloadedFilePath, 0o777)
-        subprocess.run(shlex.split(f"{downloadedFilePath} --keep --noexec --target {self.downloadsPath}"))

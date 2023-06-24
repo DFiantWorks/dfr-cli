@@ -25,7 +25,7 @@ class SpecificTool(GitOSSTool):
         # CMAKE_FLAGS="-DOPENFPGA_WITH_YOSYS=OFF -DOPENFPGA_WITH_YOSYS_PLUGIN=OFF"
         return f"""
                 make all -j`nproc` 
-                cp -avr . {self.installPath()}
+                sudo cp -avr . {self.installPath()}
                 """
 
     def env_extra(self) -> dict[str, str]:

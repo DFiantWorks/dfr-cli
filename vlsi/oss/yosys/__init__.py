@@ -9,5 +9,5 @@ class SpecificTool(GitOSSTool):
         return f"""
                 make PREFIX={self.installPath()} config-gcc
                 make PREFIX={self.installPath()} -j`nproc`
-                make PREFIX={self.installPath()} install
+                sudo make PREFIX={self.installPath()} install
                 """

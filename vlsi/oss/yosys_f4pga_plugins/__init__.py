@@ -11,5 +11,5 @@ class SpecificTool(GitOSSTool):
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
                 make PREFIX={self.installPath()} -j`nproc`
-                make PREFIX={self.installPath()} install
+                sudo make PREFIX={self.installPath()} install
                 """
