@@ -68,8 +68,8 @@ class SpecificTool(GitOSSTool):
     def env_extra(self) -> dict[str, str]:
         return {"OPENLANE_ROOT": self.linkedPath(), "OPENLANE_TAG": self.versionLoc.version}
 
-    def cmdAliases(self) -> list[tuple[str, str]]:
-        return [(f"{self.linkedPath()}/flow.tcl", "openlane")]
+    def cmdAliases(self) -> dict[str, str]:
+        return {"openlane": f"{self.linkedPath()}/flow.tcl"}
 
-    def env_final_run(self) -> str:
-        return f"cp {self.linkedPath()}/dependencies/tool_metadata.yml /"
+    def env_extra_cmds(self) -> list[str]:
+        return [f"cp {self.linkedPath()}/dependencies/tool_metadata.yml /"]

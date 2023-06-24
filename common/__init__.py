@@ -16,6 +16,7 @@ import yaml
 from collections import OrderedDict
 import re
 from urllib.parse import urlparse
+import textwrap
 
 
 class Paths:
@@ -69,6 +70,13 @@ def addEnvPaths(envName: str, paths: list[str]) -> None:
         os.environ[envName] = ":".join(paths)
     else:
         os.environ[envName] = f"{os.environ[envName]}:{':'.join(paths)}"
+
+
+def getEnvPaths(envName: str, paths: list[str]) -> list[str]:
+    if paths:
+        return [f"export {envName}=${{{envName}:+${envName}:}}{':'.join(paths)}"]
+    else:
+        return []
 
 
 def downloadAvailable(url: str) -> bool:
@@ -277,10 +285,10 @@ class Tool:
     def execFolder(self) -> str:
         return "bin"
 
-    # command aliases to be created [<origin path> : <alias name>]
-    # by default, empty list
-    def cmdAliases(self) -> list[tuple[str, str]]:
-        return []
+    # command aliases to be created [<alias name> : <origin path>]
+    # by default, empty dict
+    def cmdAliases(self) -> dict[str, str]:
+        return {}
 
     # symbolic links to be created [<origin path> : <link path>]
     # by default, adding a link between install path and the defined linked path
@@ -312,14 +320,20 @@ class Tool:
     def env_pkg_config_path(self) -> list[str]:
         return []
 
+    # environment source files to add with bash `source`
+    # by default, empty list
+    def env_sources(self) -> list[str]:
+        return []
+
     # added other environment variables {<var_name> : <value>, ...}
     # by default, empty dict
     def env_extra(self) -> dict[str, str]:
         return {}
 
-    # additional command to run after the rest of environment is set
-    def env_final_run(self) -> str:
-        return ""
+    # additional commands for environment setup
+    # by default, empty list
+    def env_extra_cmds(self) -> list[str]:
+        return []
 
     def setVersion(self):
         self.versionLoc = self.actualVersion(self.versionReq)
@@ -330,25 +344,22 @@ class Tool:
     # the initial environment setup that includes environment variables,
     # symlinks, and command aliases
     @final
-    def setup_env(self):
+    def getEnv(self) -> list[str]:
         self.setVersion()
-        addEnvPaths("PATH", self.env_path())
-        addEnvPaths("PYTHONPATH", self.env_python_path())
-        addEnvPaths("LD_LIBRARY_PATH", self.env_ld_library_path())
-        addEnvPaths("MANPATH", self.env_man_path())
-        addEnvPaths("PKG_CONFIG_PATH", self.env_pkg_config_path())
-        for env in self.env_extra().items():
-            os.environ[env[0]] = env[1]
         for symlink in self.symlinks():
             os.symlink(symlink[0], symlink[1])
-        for cmdAlias in self.cmdAliases():
-            with open(f"/usr/bin/{cmdAlias[1]}", "w") as f:
-                f.write("#!/bin/bash\n")
-                f.write(f'{cmdAlias[0]} "$@"')
-            os.chmod(f"/usr/bin/{cmdAlias[1]}", 0o777)
-        cmd = self.env_final_run()
-        if cmd != "":
-            runShellCmd(cmd)
+        return (
+            [f"#Environment for {self.name}"]
+            + getEnvPaths("PATH", self.env_path())
+            + getEnvPaths("PYTHONPATH", self.env_python_path())
+            + getEnvPaths("LD_LIBRARY_PATH", self.env_ld_library_path())
+            + getEnvPaths("MANPATH", self.env_man_path())
+            + getEnvPaths("PKG_CONFIG_PATH", self.env_pkg_config_path())
+            + list(map(lambda e: f"export {e[0]}={e[1]}", self.env_extra().items()))
+            + list(map(lambda a: f"alias {a[0]}={a[1]}", self.cmdAliases().items()))
+            + list(map(lambda s: f"source {s}", self.env_sources()))
+            + self.env_extra_cmds()
+        )
 
 
 def getToolModule(fullName: str):
@@ -403,7 +414,8 @@ class Tools:
         for fullName in ordered:
             self.all[fullName] = getTool(fullName, tool_versions_flat[fullName])
 
-    def setup_env(self):
+    def getEnv(self) -> list[str]:
+        totalEnv: list[str] = []
         setTools: set[str] = set()
         tools: list[Tool] = list(self.all.values())
         while tools:
@@ -414,12 +426,13 @@ class Tools:
                 if s not in self.all:
                     print(f"Error: The tool {tool.fullName()} requires {s} configuration as well!")
                     sys.exit(1)
-            tool.setup_env()
+            totalEnv = totalEnv + tool.getEnv()
             setTools.add(tool.fullName())
             # if we have dependencies, we set them up as well
             for depFullName, depVersionReq in tool.dependencies().items():
                 if depFullName not in setTools:
                     tools = [getTool(depFullName, depVersionReq)] + tools
+        return totalEnv
 
 
 class ZeroInstallTool(Tool):

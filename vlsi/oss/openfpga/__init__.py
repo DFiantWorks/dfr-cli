@@ -8,7 +8,7 @@ class SpecificTool(GitOSSTool):
     def dependencies(self) -> dict[str, str]:
         ret: dict[str, str] = {
             "vlsi.oss.yosys": self.getGitSubmoduleCommit("yosys"),
-            "vlsi.oss.yosys-plugins": self.getGitSubmoduleCommit("yosys-plugins"),
+            "vlsi.oss.yosys_f4pga_plugins": self.getGitSubmoduleCommit("yosys-plugins"),
         }
         vtr = self.getGitSubmoduleCommit("vtr-verilog-to-routing")
         if vtr:
@@ -31,4 +31,5 @@ class SpecificTool(GitOSSTool):
     def env_extra(self) -> dict[str, str]:
         return {"OPENFPGA_PATH": self.linkedPath()}
 
-    # TODO: need to be able to have start commands like: source openfpga.sh
+    def env_sources(self) -> list[str]:
+        return [f"{self.linkedPath()}/openfpga.sh"]
