@@ -2,13 +2,18 @@ import subprocess
 import shlex
 import os
 import shutil
-from dfr_scripts.vlsi.amd import AMDTool
+import textwrap
+from dfr_scripts.common import AMDTool
 from typing import Dict
 
 
 class SpecificTool(AMDTool):
     def __init__(self, versionReq: str):
         super().__init__("vivado", versionReq)
+
+    # the AMD installation forced the folder name to be `Vivado`
+    def _toolPathNoVersion(self, toolMnt: str) -> str:
+        return f"/mnt/{toolMnt}/{self.domain}/{self.vendor}/Vivado"
 
     def versionToFileNameMap(self) -> Dict[str, str]:
         return {
@@ -25,6 +30,7 @@ class SpecificTool(AMDTool):
 
     installerFolder = "/tmp/amd"
     installerExec = f"{installerFolder}/xsetup"
+    installerConfig = f"{installerFolder}/install_config.txt"
     configGenDefaultFile = os.path.expanduser("~/.Xilinx/install_config.txt")
 
     def extract(self):
@@ -42,7 +48,46 @@ class SpecificTool(AMDTool):
             shutil.copy(self.configGenDefaultFile, dest)
             print(f"Created config file at: {dest}")
         else:
-            print("Running token generation...")
-            subprocess.run(shlex.split(f"{self.installerExec} -b AuthTokenGen"))
-            print("Running setup...")
+            template = f"{os.path.dirname(os.path.realpath(__file__))}/install_config_{self.versionLoc.version}.txt"
+            with open(template, "r") as file:
+                lines = file.readlines()
+            with open(self.installerConfig, "w") as file:
+                for line in lines:
+                    if line.startswith("Destination="):
+                        line = f"Destination=/mnt/{self.versionLoc.toolMnt}/{self.domain}/{self.vendor}\n"
+                    file.write(line)
+            mmdd = self.downloadFileName()[22:26]
+            # Vivado 2020.3 released in 2021
+            if self.versionLoc.version == "2020.3":
+                year = "2021"
+            else:
+                year = self.versionLoc.version[0:4]
+
+            subprocess.run(
+                textwrap.dedent(
+                    f"""
+                    set -e
+                    echo Running token generation...
+                    sudo {self.installerExec} -b AuthTokenGen
+                    echo Running setup...
+                    sudo {self.installerExec} -b Install -a XilinxEULA,3rdPartyEULA -c {self.installerConfig}
+                    sudo touch -a -m -t {year}{mmdd}0000 {self.installDirReadyFilePath()}
+                    """
+                ),
+                shell=True,
+            )
+
         shutil.rmtree(self.installerFolder)
+
+    # removing default addition of vivado binary to path because this is handled by `settings64.sh`
+    def env_path(self) -> list[str]:
+        return []
+
+    # handles most of the required vivado environment
+    def env_sources(self) -> list[str]:
+        return [f"{self.installPath()}/settings64.sh"]
+
+    # LD_PRELOAD=... is a workaround for Vivado segfault with docker in Ubuntu 20+
+    # see https://support.xilinx.com/s/question/0D54U00005Sgst2SAB/failed-batch-mode-execution-in-linux-docker-running-under-windows-host?language=en_US
+    def env_extra(self) -> dict[str, str]:
+        return {"LD_PRELOAD": "/lib/x86_64-linux-gnu/libudev.so.1"}
