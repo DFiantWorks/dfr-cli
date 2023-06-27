@@ -610,9 +610,9 @@ class GitOSSTool(ShellInstallTool):
         return self.latestInstalledVersionFiltered(lambda x: x in commits)
 
     def latestInstallableVersion(self, versionReq: str) -> str:
-        if isCommitVersion(versionReq) and not self._useOnlyTaggedCommits:
+        if isCommitVersion(versionReq):
             return self.getGitFullCommit(versionReq)
-        elif versionReq == "*":
+        elif versionReq == "*" and not self._useOnlyTaggedCommits:
             return get_latest_commit_hash(self.repoOwnerName, self.repoName)
         else:
             return next(iter(self.getGitTagCommits(versionReq).values()))
