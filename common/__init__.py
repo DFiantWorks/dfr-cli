@@ -19,6 +19,9 @@ from urllib.parse import urlparse
 import textwrap
 import fnmatch
 from datetime import datetime
+import git
+from git import Repo, RemoteProgress
+import shutil
 
 
 class Paths:
@@ -443,7 +446,9 @@ class Tool:
     def setVersion(self):
         self.versionLoc = self.latestInstalledVersion(self.versionReq)
         if self.versionLoc.version == "" or (not self._zero_install and not self.isInstalled()):
-            print(f"Missing version. Consider running: `dfr install {self.fullName()} {self.versionReq}`")
+            print(
+                f'Missing version that matches `{self.versionReq}`.\nConsider running: `dfr install {self.fullName()} "{self.versionReq}"`'
+            )
             sys.exit(1)
 
     # the initial environment setup that includes environment variables,
@@ -563,16 +568,45 @@ class ShellInstallTool(Tool):
         runShellCmd(self._installShellCmd(flags))
 
 
+class CloneProgress(RemoteProgress):
+    def update(self, op_code, cur_count, max_count=None, message=""):
+        percentage = (cur_count / max_count) * 100 if max_count else 0
+        print(f"Progress: {percentage:.2f}%", end="\r")
+
+
 class GitOSSTool(ShellInstallTool):
-    repo: str
+    repoURL: str
     repoOwnerName: str
     repoName: str
+    repo: Optional[Repo] = None
+    repoLocalPath: str
     # if set to true, then latest installable version will only cater to tagged commits
     _useOnlyTaggedCommits: bool = False
 
-    def __init__(self, domain: str, name: str, versionReq: str, repo: str):
-        self.repo = repo
-        self.repoOwnerName, self.repoName = extract_owner_and_repo_from_github_url(self.repo)
+    def getRepo(self) -> Repo:
+        if self.repo:
+            return self.repo
+        else:
+            print(f"Cloning from {self.repoURL} ...")
+            self.repoLocalPath = f"/tmp/dfr_git_{self.repoName}"
+            shutil.rmtree(self.repoLocalPath, ignore_errors=True)
+            self.repo = Repo.clone_from(self.repoURL, self.repoLocalPath, progress=CloneProgress())
+            return self.repo
+
+    def getLatestCommitHash(self) -> str:
+        """Get the commit hash of the remote HEAD."""
+        output = subprocess.check_output(["git", "ls-remote", self.repoURL, "HEAD"])
+        return output.decode().split()[0]
+
+    def getFullCommitHash(self, partial: str) -> str:
+        if len(partial) == 40:
+            return partial
+        else:
+            return self.getRepo().commit(partial).hexsha
+
+    def __init__(self, domain: str, name: str, versionReq: str, repoURL: str):
+        self.repoURL = repoURL
+        self.repoOwnerName, self.repoName = extract_owner_and_repo_from_github_url(self.repoURL)
         super().__init__(domain, "oss", name, versionReq)
 
     @final
@@ -581,45 +615,43 @@ class GitOSSTool(ShellInstallTool):
 
     # get a dict of tagged commits matching a given tag (unix name) pattern.
     # keys are tags, values are commits.
-    # the dict is ordered from newest to latest.
     @final
     def getGitTagCommits(self, tagPattern: str) -> dict[str, str]:
-        command = f"git ls-remote -t {self.repo}"
+        command = f"git ls-remote -t {self.repoURL}"
         commitsTagsBytes = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE).stdout.read().splitlines()  # type: ignore
         ret: dict[str, str] = {}
         for ctb in commitsTagsBytes:
             commit, tag = ctb.decode("utf-8").replace("refs/tags/", "").split("\t")
             if fnmatch.fnmatch(strip_initial_v(tag), tagPattern):
                 ret[tag] = commit
-        return sort_tags_by_commit_datetime(self.repoOwnerName, self.repoName, ret)
+        return ret
 
+    # the same as getGitTagCommits, but where the tags are ordered from newest to oldest commits
     @final
-    def getGitFullCommit(self, partialCommit: str) -> str:
-        if len(partialCommit) == 40:
-            return partialCommit
-        command = f"git ls-remote {self.repo}"
-        commitsTagsBytes = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE).stdout.read().splitlines()  # type: ignore
-        for ctb in commitsTagsBytes:
-            commit: str = ctb.decode("utf-8").split("\t")[0]
-            if commit.startswith(partialCommit):
-                return commit
-        return ""
+    def getGitOrderedTagCommits(self, tagPattern: str) -> dict[str, str]:
+        tagsAndCommits = self.getGitTagCommits(tagPattern)
+        if len(tagsAndCommits) <= 1:
+            return tagsAndCommits
+        else:
+            return sort_tags_by_commit_datetime(self.repoOwnerName, self.repoName, self.getGitTagCommits(tagPattern))
 
     def latestInstalledVersion(self, versionReq: str) -> VersionLoc:
         commits: list[str]
         if isCommitVersion(versionReq):
-            commits = [self.getGitFullCommit(versionReq)]
+            return self.latestInstalledVersionFiltered(lambda x: x.startswith(versionReq))
+        elif versionReq == "*" and not self._useOnlyTaggedCommits:
+            return self.latestInstalledVersionFiltered(lambda x: True)
         else:
             commits = list(self.getGitTagCommits(versionReq).values())
-        return self.latestInstalledVersionFiltered(lambda x: x in commits)
+            return self.latestInstalledVersionFiltered(lambda x: x in commits)
 
     def latestInstallableVersion(self, versionReq: str) -> str:
         if isCommitVersion(versionReq):
-            return self.getGitFullCommit(versionReq)
+            return self.getFullCommitHash(versionReq)
         elif versionReq == "*" and not self._useOnlyTaggedCommits:
-            return get_latest_commit_hash(self.repoOwnerName, self.repoName)
+            return self.getLatestCommitHash()
         else:
-            commits = list(self.getGitTagCommits(versionReq).values())
+            commits = list(self.getGitOrderedTagCommits(versionReq).values())
             if commits:
                 return commits[0]
             else:
@@ -639,27 +671,20 @@ class GitOSSTool(ShellInstallTool):
 
     @final
     def _installShellCmd(self, flags: str) -> str:
-        recursiveFlag = ""
-        recursiveCheckout = ""
+        self.getRepo().git.checkout(self.versionLoc.version)
         if self.recursiveClone():
-            recursiveFlag = "--recursive"
-            recursiveCheckout = "git submodule update --init --recursive"
-        acceptErr = ""
-        if self.acceptCloneError():
-            acceptErr = "|| true"
+            self.getRepo().submodule_update(recursive=True)
+        # acceptErr = ""
+        # if self.acceptCloneError():
+        #     acceptErr = "|| true"
         return f"""
                 sudo rm -rf {self.installPath()}
                 sudo mkdir -p {self.installPath()}
-                sudo rm -rf /tmp/{self.name}
-                cd /tmp
-                git clone {recursiveFlag} {self.repo} {self.name} {acceptErr}
-                cd {self.name}
-                git checkout {self.versionLoc.version}
-                {recursiveCheckout}
+                cd {self.repoLocalPath}
                 TIMEDATE=`TZ=UTC0 git show --quiet --date='format-local:%Y%m%d%H%M.%S' --format="%cd"`
                 {self.buildAndInstallShellCmd(flags)}
                 sudo touch -a -m -t $TIMEDATE {self.installDirReadyFilePath()}
-                sudo rm -rf /tmp/{self.name}
+                sudo rm -rf {self.repoLocalPath}
                 """
 
 
