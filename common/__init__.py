@@ -17,6 +17,8 @@ from collections import OrderedDict
 import re
 from urllib.parse import urlparse
 import textwrap
+import fnmatch
+from datetime import datetime
 
 
 class Paths:
@@ -24,6 +26,26 @@ class Paths:
 
 
 paths = Paths()
+
+
+# remove initial `v` character from a string when it is followed by either a
+# digit, `*` or `?`.
+def strip_initial_v(string):
+    pattern = r"^v([\d*?].*)$"
+    match = re.match(pattern, string)
+    if match:
+        return match.group(1)
+    else:
+        return string
+
+
+def isPatternVersion(version: str) -> bool:
+    return "*" in version or "?" in version
+
+
+def isCommitVersion(version: str) -> bool:
+    pattern = r"^[0-9a-fA-F]+$"
+    return re.match(pattern, version) is not None and len(version) >= 6
 
 
 def extract_owner_and_repo_from_github_url(github_url):
@@ -45,9 +67,47 @@ def extract_owner_and_repo_from_github_url(github_url):
         return sys.exit(1)
 
 
-def get_submodule_commit_hash(ownerName: str, repoName: str, submodulePath: str, ref: str) -> Optional[str]:
+def get_latest_commit_hash(repoOwnerName: str, repoName: str, branch: Optional[str] = None) -> str:
+    if branch is None:
+        branch = get_default_branch(repoOwnerName, repoName)
+    api_url = f"https://api.github.com/repos/{repoOwnerName}/{repoName}/branches/{branch}"  # create the api url
+
+    # make the request
+    response = requests.get(api_url)
+
+    # check for errors
+    if response.status_code != 200:
+        print(f"`{api_url}` error with status code: {response.status_code}")
+        return sys.exit(1)
+
+    # extract the latest commit hash
+    branch_data = response.json()
+    latest_commit_hash = branch_data["commit"]["sha"]
+
+    return latest_commit_hash
+
+
+def get_default_branch(repoOwnerName: str, repoName: str) -> str:
+    api_url = f"https://api.github.com/repos/{repoOwnerName}/{repoName}"  # create the api url
+
+    # make the request
+    response = requests.get(api_url)
+
+    # check for errors
+    if response.status_code != 200:
+        print(f"`{api_url}` error with status code: {response.status_code}")
+        return sys.exit(1)
+
+    # extract the default branch
+    repo_data = response.json()
+    default_branch = repo_data["default_branch"]
+
+    return default_branch
+
+
+def get_submodule_commit_hash(repoOwnerName: str, repoName: str, submodulePath: str, ref: str) -> Optional[str]:
     try:
-        url = f"https://api.github.com/repos/{ownerName}/{repoName}/contents/{submodulePath}?ref={ref}"
+        url = f"https://api.github.com/repos/{repoOwnerName}/{repoName}/contents/{submodulePath}?ref={ref}"
         response = requests.get(url)
 
         if response.status_code == 200:
@@ -63,6 +123,46 @@ def get_submodule_commit_hash(ownerName: str, repoName: str, submodulePath: str,
     except Exception as e:
         print(f"Error while getting the submodule commit hash: {str(e)}")
         sys.exit(1)
+
+
+def get_commit_datetime(repoOwnerName: str, repoName: str, commit_hash: str) -> Optional[str]:
+    api_url = f"https://api.github.com/repos/{repoOwnerName}/{repoName}/commits/{commit_hash}"  # create the api url
+    # make the request
+    response = requests.get(api_url)
+
+    # if a commit is no longer available returning None
+    if response.status_code == 422:
+        return None
+
+    # check for errors
+    if response.status_code != 200:
+        print(f"`{api_url}` error with status code: {response.status_code}")
+        return sys.exit(1)
+
+    # extract the commit datetime
+    commit_data = response.json()
+    commit_datetime = commit_data["commit"]["committer"]["date"]
+
+    return commit_datetime
+
+
+def sort_tags_by_commit_datetime(
+    repoOwnerName: str, repoName: str, tags_commits_dict: dict[str, str]
+) -> dict[str, str]:
+    # step 1 and 2: get commit datetime for each commit and create a list of tuples
+    tuples_list = []
+    for tag, commit in tags_commits_dict.items():
+        commit_datetime = get_commit_datetime(repoOwnerName, repoName, commit)
+        if commit_datetime:
+            tuples_list.append((tag, commit, commit_datetime))
+
+    # step 3: sort the list of tuples by commit datetime
+    tuples_list.sort(key=lambda x: datetime.fromisoformat(x[2].replace("Z", "")), reverse=True)
+
+    # step 4: convert the list of tuples back into a dictionary
+    sorted_dict = {t[0]: t[1] for t in tuples_list}
+
+    return sorted_dict
 
 
 def addEnvPaths(envName: str, paths: list[str]) -> None:
@@ -83,38 +183,16 @@ def downloadAvailable(url: str) -> bool:
     return requests.head(url).status_code < 400
 
 
-def wildcardToRegex(pattern: str) -> re.Pattern:
+# convert dfr-supported patterns to standard patterns
+def dfrToStdPattern(pattern: str) -> str:
     if pattern == "latest":
-        return re.compile("^.*$")
+        return "*"
     else:
-        return re.compile("^" + re.escape(pattern).replace("\\*", ".*").replace("\\?", ".") + "$")
+        return pattern
 
 
 def installDirReadyFile(path: str) -> str:
     return os.path.join(path, ".dfr_ready")
-
-
-def getNewestVersionFolder(path: str, __filterFunc: Callable[[str], bool]) -> str:
-    if not os.path.exists(path):
-        return ""
-    # listing all the given path file/folders according to the given filter
-    fileOrFolderList: list[str] = list(filter(__filterFunc, os.listdir(path)))
-    folderList: list[str] = list(
-        filter(
-            # filtering just folders
-            lambda x: os.path.isdir(x) and os.path.exists(installDirReadyFile(x)),
-            # creating full paths for directory check
-            map(lambda x: os.path.join(path, x), fileOrFolderList),
-        )
-    )
-    if folderList:
-        return os.path.basename(max(folderList, key=lambda x: os.stat(installDirReadyFile(x)).st_ctime_ns))
-    else:
-        return ""
-
-
-def isCommitVersion(versionReq: str) -> bool:
-    return all(c in string.hexdigits for c in versionReq) and len(versionReq) >= 5
 
 
 def curlGitFolderCmd(repo: str, commit: str, folder: str) -> str:
@@ -131,6 +209,21 @@ def runShellCmd(cmd: str):
     r = subprocess.run(properCmd, shell=True)
     if r.returncode != 0:
         sys.exit(r.returncode)
+
+
+def getReadyFolders(path: str, __filterFunc: Callable[[str], bool]) -> list[str]:
+    if not os.path.exists(path):
+        return []
+    # listing all the given path file/folders according to the given filter
+    fileOrFolderList: list[str] = list(filter(__filterFunc, os.listdir(path)))
+    return list(
+        filter(
+            # filtering just folders
+            lambda x: os.path.isdir(x) and os.path.exists(installDirReadyFile(x)),
+            # creating full paths for directory check
+            map(lambda x: os.path.join(path, x), fileOrFolderList),
+        )
+    )
 
 
 class VersionLoc:
@@ -154,32 +247,41 @@ class Tool:
         self.domain = domain
         self.vendor = vendor
         self.name = name
-        self.versionReq = versionReq
+        self.versionReq = dfrToStdPattern(strip_initial_v(versionReq))
+
+    def latestInstalledVersionFiltered(self, __filterFunc: Callable[[str], bool]) -> VersionLoc:
+        # listing all the given path file/folders according to the given filter
+        folderList: list[str] = (
+            getReadyFolders(self._toolPathNoVersion("osstools"), __filterFunc)
+            + getReadyFolders(self._toolPathNoVersion("orgtools"), __filterFunc)
+            + getReadyFolders(self._toolPathNoVersion("mytools"), __filterFunc)
+        )
+        if folderList:
+            fullPath = max(folderList, key=lambda x: os.stat(installDirReadyFile(x)).st_ctime_ns)
+            toolMnt = fullPath.split("/")[2]
+            print(toolMnt)
+            return VersionLoc(toolMnt, os.path.basename(fullPath))
+        else:
+            return VersionLoc("", "")
 
     def latestInstallableVersion(self, pattern: str) -> str:
         return self.versionReq
 
-    def latestVersion(self, pattern: str) -> VersionLoc:
-        toolMnt = "mytools"
-        return VersionLoc(
-            toolMnt,
-            getNewestVersionFolder(
-                self._toolPathNoVersion(toolMnt), lambda x: re.match(wildcardToRegex(pattern), x) is not None
-            ),
-        )
+    def latestInstalledVersion(self, pattern: str) -> VersionLoc:
+        return self.latestInstalledVersionFiltered(lambda x: re.match(pattern, x) is not None)
 
-    def actualVersion(self, versionReq: str) -> VersionLoc:
-        toolMnt = "mytools"
-        # requests latest
-        if "*" in versionReq or "?" in versionReq:
-            # has concrete version specified
-            if ":" in versionReq:
-                req, concrete = versionReq.split(":")
-                return VersionLoc(toolMnt, concrete)
-            else:
-                return self.latestVersion(versionReq)
-        else:
-            return VersionLoc(toolMnt, versionReq)
+    # def actualVersion(self, versionReq: str) -> VersionLoc:
+    #     toolMnt = "mytools"
+    #     # requests latest
+    #     if isPatternVersion(versionReq):
+    #         # has concrete version specified
+    #         if ":" in versionReq:
+    #             req, concrete = versionReq.split(":")
+    #             return VersionLoc(toolMnt, concrete)
+    #         else:
+    #             return self.latestInstalledVersion(versionReq)
+    #     else:
+    #         return VersionLoc(toolMnt, versionReq)
 
     def dependencies(self) -> dict[str, str]:
         return {}
@@ -335,7 +437,7 @@ class Tool:
         return []
 
     def setVersion(self):
-        self.versionLoc = self.actualVersion(self.versionReq)
+        self.versionLoc = self.latestInstalledVersion(self.versionReq)
         if self.versionLoc.version == "" or (not self._zero_install and not self.isInstalled()):
             print(f"Missing version. Consider running: `dfr install {self.fullName()} {self.versionReq}`")
             sys.exit(1)
@@ -459,35 +561,38 @@ class ShellInstallTool(Tool):
 
 class GitOSSTool(ShellInstallTool):
     repo: str
-    _useTags: bool = False
+    repoOwnerName: str
+    repoName: str
+    # if set to true, then latest installable version will only cater to tagged commits
+    _useOnlyTaggedCommits: bool = False
 
     def __init__(self, domain: str, name: str, versionReq: str, repo: str):
         self.repo = repo
+        self.repoOwnerName, self.repoName = extract_owner_and_repo_from_github_url(self.repo)
         super().__init__(domain, "oss", name, versionReq)
 
     @final
     def getGitSubmoduleCommit(self, submoduleName: str) -> Optional[str]:
-        ownerName, repoName = extract_owner_and_repo_from_github_url(self.repo)
-        return get_submodule_commit_hash(ownerName, repoName, submoduleName, self.versionLoc.version)
+        return get_submodule_commit_hash(self.repoOwnerName, self.repoName, submoduleName, self.versionLoc.version)
 
-    # get a set of commits or tags matching a given tag pattern.
-    # if `retTags` is true then returning tags, otherwise returning commits
+    # get a dict of tagged commits matching a given tag (unix name) pattern.
+    # keys are tags, values are commits.
+    # the dict is ordered from newest to latest.
     @final
-    def getGitTagPatternCommits(self, tagPattern: re.Pattern) -> set[str]:
+    def getGitTagCommits(self, tagPattern: str) -> dict[str, str]:
         command = f"git ls-remote -t {self.repo}"
         commitsTagsBytes = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE).stdout.read().splitlines()  # type: ignore
-        ret: set[str] = set()
+        ret: dict[str, str] = {}
         for ctb in commitsTagsBytes:
             commit, tag = ctb.decode("utf-8").replace("refs/tags/", "").split("\t")
-            if re.match(tagPattern, tag) is not None:
-                if self._useTags:
-                    ret.add(tag)
-                else:
-                    ret.add(commit)
-        return ret
+            if fnmatch.fnmatch(strip_initial_v(tag), tagPattern):
+                ret[tag] = commit
+        return sort_tags_by_commit_datetime(self.repoOwnerName, self.repoName, ret)
 
     @final
     def getGitFullCommit(self, partialCommit: str) -> str:
+        if len(partialCommit) == 40:
+            return partialCommit
         command = f"git ls-remote {self.repo}"
         commitsTagsBytes = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE).stdout.read().splitlines()  # type: ignore
         for ctb in commitsTagsBytes:
@@ -496,33 +601,21 @@ class GitOSSTool(ShellInstallTool):
                 return commit
         return ""
 
-    def latestVersion(self, pattern: str) -> VersionLoc:
-        toolMnt = "mytools"
-        commits = self.getGitTagPatternCommits(wildcardToRegex(pattern))
-        return VersionLoc(toolMnt, getNewestVersionFolder(self._toolPathNoVersion(toolMnt), lambda x: x in commits))
-
-    def latestInstallableVersion(self, version: str) -> str:
-        if isCommitVersion(version) and not self._useTags:
-            if len(version) == 40:
-                return version  # full commit
-            else:  # find full version
-                return self.getGitFullCommit(version)
+    def latestInstalledVersion(self, versionReq: str) -> VersionLoc:
+        commits: list[str]
+        if isCommitVersion(versionReq):
+            commits = [self.getGitFullCommit(versionReq)]
         else:
-            return self.getGitTagPatternCommits(wildcardToRegex(version)).pop()
+            commits = list(self.getGitTagCommits(versionReq).values())
+        return self.latestInstalledVersionFiltered(lambda x: x in commits)
 
-    def actualVersion(self, versionReq: str) -> VersionLoc:
-        toolMnt = "mytools"
-        versionLoc = super().actualVersion(versionReq)
-        if isCommitVersion(versionLoc.version) and not self._useTags:
-            if len(versionLoc.version) == 40:
-                return versionLoc  # full commit
-            else:  # find full version
-                return VersionLoc(
-                    toolMnt,
-                    getNewestVersionFolder(self._toolPathNoVersion(toolMnt), lambda x: x.startswith(versionReq)),
-                )
+    def latestInstallableVersion(self, versionReq: str) -> str:
+        if isCommitVersion(versionReq) and not self._useOnlyTaggedCommits:
+            return self.getGitFullCommit(versionReq)
+        elif versionReq == "*":
+            return get_latest_commit_hash(self.repoOwnerName, self.repoName)
         else:
-            return self.latestVersion(versionLoc.version)
+            return next(iter(self.getGitTagCommits(versionReq).values()))
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
@@ -560,6 +653,62 @@ class GitOSSTool(ShellInstallTool):
                 sudo touch -a -m -t $TIMEDATE {self.installDirReadyFilePath()}
                 sudo rm -rf /tmp/{self.name}
                 """
+
+
+class GitPythonOSSTool(GitOSSTool):
+    def __init__(self, domain: str, name: str, versionReq: str, repo: str):
+        super().__init__(domain, name, versionReq, repo)
+
+    def buildAndInstallShellCmd(self, flags: str) -> str:
+        return f"""
+                echo Copying source files into installation folder without git history...
+                sudo rsync -a --info=progress2 . {self.installPath()} --exclude '.git'
+                """
+
+    # no paths for a python lib (we set python path)
+    def env_path(self) -> list[str]:
+        return []
+
+    # add to python path
+    def env_python_path(self) -> list[str]:
+        return [f"{self.linkedPath()}/{self.execFolder()}"]
+
+
+# class DownloadedTool(Tool):
+#     def __init__(self, domain: str, vendor: str, name: str, versionReq: str):
+#         super().__init__(domain, vendor, name, versionReq)
+
+#     # all firefox downloads will be automatically placed here
+#     downloadsPath = os.path.expanduser("~/Downloads")
+
+#     @abstractmethod
+#     def downloadFileName(self) -> str:
+#         pass
+
+#     def downloadedFilePath(self) -> str:
+#         return f"{self.downloadsPath}/{self.downloadFileName()}"
+
+#     @abstractmethod
+#     def downloadURL(self) -> str:
+#         pass
+
+#     def unsupportedVersionErr(self):
+#         print(f"Error: {self.name} version `{self.versionLoc.version}` is not supported.")
+#         sys.exit(1)
+
+#     def _install(self, flags: str):
+#         downloadedFilePath = self.downloadedFilePath()
+#         self._downloadWithFirefox(downloadedFilePath, self.downloadURL())
+#         print("Extracting setup...")
+#         self.extract()
+#         os.remove(downloadedFilePath)
+#         self.postDownloadInstall(flags)
+
+#     def extract(self):
+#         pass
+
+#     def postDownloadInstall(self, flags: str):
+#         pass
 
 
 class InteractivelyDownloadedTool(Tool):
@@ -635,8 +784,11 @@ class AMDTool(InteractivelyDownloadedTool):
     def versionToFileNameMap(self) -> Dict[str, str]:
         pass
 
-    # def latestInstallableVersion(self, pattern: str) -> str:
-    #     return next(iter(self.versionToFileNameMap()))
+    def latestInstallableVersion(self, versionReq: str) -> str:
+        for version in self.versionToFileNameMap().keys():
+            if fnmatch.fnmatch(version, versionReq):
+                return version
+        return ""
 
     # TODO: consider replacing with webcrawling techniques instead of a fixed lookup
     def downloadFileName(self) -> str:
