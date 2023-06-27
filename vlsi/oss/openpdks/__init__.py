@@ -11,7 +11,7 @@ class SpecificTool(GitOSSTool):
         if downloadAvailable(url):
             return f"""
                     cd {self.installPath()}
-                    sudo curl -L {url} | tar -xJC . --strip-components=1
+                    curl -L {url} | sudo tar -xJC .
                     """
         else:
             return ""
@@ -23,8 +23,6 @@ class SpecificTool(GitOSSTool):
             print(f"Could not find PDK download link for {self.versionLoc.version}")
             sys.exit(1)
         return f"""
-                mkdir build
-                cd build
                 {sky130Cmd}
                 {gf180mcu}
                 """

@@ -698,13 +698,13 @@ class GitPythonOSSTool(GitOSSTool):
                 sudo rsync -a --info=progress2 . {self.installPath()} --exclude '.git'
                 """
 
-    # no paths for a python lib (we set python path)
+    # no regular paths for a python lib (we set a python path)
     def env_path(self) -> list[str]:
         return []
 
     # add to python path
     def env_python_path(self) -> list[str]:
-        return [f"{self.linkedPath()}/{self.execFolder()}"]
+        return [self.linkedPath()]
 
 
 # class DownloadedTool(Tool):
