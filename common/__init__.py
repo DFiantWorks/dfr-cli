@@ -259,7 +259,6 @@ class Tool:
         if folderList:
             fullPath = max(folderList, key=lambda x: os.stat(installDirReadyFile(x)).st_ctime_ns)
             toolMnt = fullPath.split("/")[2]
-            print(toolMnt)
             return VersionLoc(toolMnt, os.path.basename(fullPath))
         else:
             return VersionLoc("", "")
@@ -324,6 +323,11 @@ class Tool:
     @final
     def install(self, toolMntReq: str, flags: str, withToolDeps: bool):
         version = self.latestInstallableVersion(self.versionReq)
+        if version == "":
+            print(
+                f"No installable versions found to match the pattern `{self.versionReq}` for the tool `{self.fullName()}`"
+            )
+            sys.exit(1)
         toolMnt: str
         installedToolMnt = self.getInstalledToolMnt(version)
         if installedToolMnt:
@@ -615,7 +619,11 @@ class GitOSSTool(ShellInstallTool):
         elif versionReq == "*" and not self._useOnlyTaggedCommits:
             return get_latest_commit_hash(self.repoOwnerName, self.repoName)
         else:
-            return next(iter(self.getGitTagCommits(versionReq).values()))
+            commits = list(self.getGitTagCommits(versionReq).values())
+            if commits:
+                return commits[0]
+            else:
+                return ""
 
     def buildAndInstallShellCmd(self, flags: str) -> str:
         return f"""
