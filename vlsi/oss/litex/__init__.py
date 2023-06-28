@@ -1,4 +1,5 @@
 from dfr_scripts.common import GitPythonOSSTool, isCommitVersion
+import ast
 
 
 class SpecificTool(GitPythonOSSTool):
@@ -10,20 +11,28 @@ class SpecificTool(GitPythonOSSTool):
             tag = "latest"
         else:
             tag = self.versionReq
-        ret: dict[str, str] = {
-            "vlsi.oss.migen": "latest",
-            "vlsi.oss.pythondata_software_picolibc": "latest",
-            "vlsi.oss.pythondata_software_compiler_rt": "latest",
-            "vlsi.oss.litex_boards": tag,
-            "vlsi.oss.liteeth": tag,
-            "vlsi.oss.litedram": tag,
-            "vlsi.oss.litepcie": tag,
-            "vlsi.oss.litesata": tag,
-            "vlsi.oss.litesdcard": tag,
-            "vlsi.oss.liteiclink": tag,
-            "vlsi.oss.litescope": tag,
-            "vlsi.oss.litejesd204b": tag,
-            "vlsi.oss.litespi": tag,
-            "vlsi.oss.pythondata_cpu_vexriscv": "latest",
-        }
+        setupFile = f"{self.installPath()}/litex_setup.py"
+        with open(setupFile, "r") as file:
+            module = ast.parse(file.read())
+        dictAST: ast.Dict
+        for node in module.body:
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if target.id == "git_repos":  # type: ignore
+                        dictAST = node.value  # type: ignore
+                        break
+        ret: dict[str, str] = {}
+        for key, value in zip(dictAST.keys, dictAST.values):
+            if isinstance(value, ast.Call):
+                dependency = f'vlsi.oss.{key.s.replace("-", "_")}'  # type: ignore
+                if dependency != "vlsi.oss.litex":
+                    for kw in value.keywords:
+                        if kw.arg == "sha1":
+                            ret[dependency] = hex(kw.value.n)[2:]  # type: ignore
+                        elif kw.arg == "branch":
+                            ret[dependency] = kw.value.s  # type: ignore
+                        elif kw.arg == "tag":
+                            ret[dependency] = tag
+                        else:
+                            ret[dependency] = "latest"
         return ret

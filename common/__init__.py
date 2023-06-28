@@ -320,8 +320,11 @@ class Tool:
     @final
     def installDependencies(self, toolMntReq: str):
         # if we have dependencies, we install them up as well
-        for depFullName, depVersionReq in self.dependencies().items():
-            getTool(depFullName, depVersionReq).install(toolMntReq, "", True)
+        deps = self.dependencies().items()
+        if deps:
+            print(f"Installing tool dependencies of `{self.fullName()}`...")
+            for depFullName, depVersionReq in deps:
+                getTool(depFullName, depVersionReq).install(toolMntReq, "", True)
 
     @final
     def install(self, toolMntReq: str, flags: str, withToolDeps: bool):
@@ -343,8 +346,7 @@ class Tool:
         else:
             print(f"Installing tool `{self.fullName()}` with version `{version}` under mount `{toolMnt}`...")
             self._install(flags)
-        if withToolDeps and self.dependencies():
-            print(f"Installing tool dependencies of `{self.fullName()}`...")
+        if withToolDeps:
             self.installDependencies(toolMntReq)
 
     @final
@@ -478,9 +480,9 @@ def getToolModule(fullName: str):
         spec = importlib.util.spec_from_file_location(
             module_name, f"/etc/dfr/dfr_scripts/{fullName.replace('.','/')}/__init__.py"
         )
-        module = importlib.util.module_from_spec(spec)
+        module = importlib.util.module_from_spec(spec)  # type: ignore
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        spec.loader.exec_module(module)  # type: ignore
         return module
     except FileNotFoundError:
         print(f"Missing script for `{fullName}`")
@@ -590,7 +592,7 @@ class GitOSSTool(ShellInstallTool):
             print(f"Cloning from {self.repoURL} ...")
             self.repoLocalPath = f"/tmp/dfr_git_{self.repoName}"
             shutil.rmtree(self.repoLocalPath, ignore_errors=True)
-            self.repo = Repo.clone_from(self.repoURL, self.repoLocalPath, progress=CloneProgress())
+            self.repo = Repo.clone_from(self.repoURL, self.repoLocalPath, progress=CloneProgress())  # type: ignore
             return self.repo
 
     def getLatestCommitHash(self) -> str:
@@ -616,24 +618,26 @@ class GitOSSTool(ShellInstallTool):
     # get a dict of tagged commits matching a given tag (unix name) pattern.
     # keys are tags, values are commits.
     @final
-    def getGitTagCommits(self, tagPattern: str) -> dict[str, str]:
-        command = f"git ls-remote -t {self.repoURL}"
+    def getGitTagBranchCommits(self, tagPattern: str) -> dict[str, str]:
+        command = f"git ls-remote -th {self.repoURL}"
         commitsTagsBytes = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE).stdout.read().splitlines()  # type: ignore
         ret: dict[str, str] = {}
         for ctb in commitsTagsBytes:
-            commit, tag = ctb.decode("utf-8").replace("refs/tags/", "").split("\t")
+            commit, tag = ctb.decode("utf-8").replace("refs/tags/", "").replace("refs/heads/", "").split("\t")
             if fnmatch.fnmatch(strip_initial_v(tag), tagPattern):
                 ret[tag] = commit
         return ret
 
     # the same as getGitTagCommits, but where the tags are ordered from newest to oldest commits
     @final
-    def getGitOrderedTagCommits(self, tagPattern: str) -> dict[str, str]:
-        tagsAndCommits = self.getGitTagCommits(tagPattern)
+    def getGitOrderedTagBranchCommits(self, tagPattern: str) -> dict[str, str]:
+        tagsAndCommits = self.getGitTagBranchCommits(tagPattern)
         if len(tagsAndCommits) <= 1:
             return tagsAndCommits
         else:
-            return sort_tags_by_commit_datetime(self.repoOwnerName, self.repoName, self.getGitTagCommits(tagPattern))
+            return sort_tags_by_commit_datetime(
+                self.repoOwnerName, self.repoName, self.getGitTagBranchCommits(tagPattern)
+            )
 
     def latestInstalledVersion(self, versionReq: str) -> VersionLoc:
         commits: list[str]
@@ -642,7 +646,7 @@ class GitOSSTool(ShellInstallTool):
         elif versionReq == "*" and not self._useOnlyTaggedCommits:
             return self.latestInstalledVersionFiltered(lambda x: True)
         else:
-            commits = list(self.getGitTagCommits(versionReq).values())
+            commits = list(self.getGitTagBranchCommits(versionReq).values())
             return self.latestInstalledVersionFiltered(lambda x: x in commits)
 
     def latestInstallableVersion(self, versionReq: str) -> str:
@@ -651,7 +655,7 @@ class GitOSSTool(ShellInstallTool):
         elif versionReq == "*" and not self._useOnlyTaggedCommits:
             return self.getLatestCommitHash()
         else:
-            commits = list(self.getGitOrderedTagCommits(versionReq).values())
+            commits = list(self.getGitOrderedTagBranchCommits(versionReq).values())
             if commits:
                 return commits[0]
             else:
