@@ -711,41 +711,15 @@ class GitPythonOSSTool(GitOSSTool):
         return [self.linkedPath()]
 
 
-# class DownloadedTool(Tool):
-#     def __init__(self, domain: str, vendor: str, name: str, versionReq: str):
-#         super().__init__(domain, vendor, name, versionReq)
+class Download:
+    url: str
+    fileName: str
+    date: str
 
-#     # all firefox downloads will be automatically placed here
-#     downloadsPath = os.path.expanduser("~/Downloads")
-
-#     @abstractmethod
-#     def downloadFileName(self) -> str:
-#         pass
-
-#     def downloadedFilePath(self) -> str:
-#         return f"{self.downloadsPath}/{self.downloadFileName()}"
-
-#     @abstractmethod
-#     def downloadURL(self) -> str:
-#         pass
-
-#     def unsupportedVersionErr(self):
-#         print(f"Error: {self.name} version `{self.versionLoc.version}` is not supported.")
-#         sys.exit(1)
-
-#     def _install(self, flags: str):
-#         downloadedFilePath = self.downloadedFilePath()
-#         self._downloadWithFirefox(downloadedFilePath, self.downloadURL())
-#         print("Extracting setup...")
-#         self.extract()
-#         os.remove(downloadedFilePath)
-#         self.postDownloadInstall(flags)
-
-#     def extract(self):
-#         pass
-
-#     def postDownloadInstall(self, flags: str):
-#         pass
+    def __init__(self, url: str, fileName: str, date: str) -> None:
+        self.url = url
+        self.fileName = fileName
+        self.date = date
 
 
 class InteractivelyDownloadedTool(Tool):
@@ -756,15 +730,14 @@ class InteractivelyDownloadedTool(Tool):
     downloadsPath = os.path.expanduser("~/Downloads")
 
     @abstractmethod
-    def downloadFileName(self) -> str:
+    def versionDownloadMap(self) -> dict[str, Download]:
         pass
 
-    def downloadedFilePath(self) -> str:
-        return f"{self.downloadsPath}/{self.downloadFileName()}"
-
-    @abstractmethod
-    def downloadURL(self) -> str:
-        pass
+    def latestInstallableVersion(self, versionReq: str) -> str:
+        for version in self.versionDownloadMap().keys():
+            if fnmatch.fnmatch(version, versionReq):
+                return version
+        return ""
 
     @abstractmethod
     def downloadInstructions(self) -> str:
@@ -799,17 +772,21 @@ class InteractivelyDownloadedTool(Tool):
             firefoxPid.terminate()
 
     def _install(self, flags: str):
-        downloadedFilePath = self.downloadedFilePath()
-        self._downloadWithFirefox(downloadedFilePath, self.downloadURL())
+        try:
+            download = self.versionDownloadMap()[self.versionLoc.version]
+        except:
+            return self.unsupportedVersionErr()
+        downloadedFilePath = f"{self.downloadsPath}/{download.fileName}"
+        self._downloadWithFirefox(downloadedFilePath, download.url)
         print("Extracting setup...")
-        self.extract()
+        self.extract(downloadedFilePath)
         os.remove(downloadedFilePath)
-        self.postDownloadInstall(flags)
+        self.postDownloadInstall(download.date, flags)
 
-    def extract(self):
+    def extract(self, downloadedFilePath: str):
         pass
 
-    def postDownloadInstall(self, flags: str):
+    def postDownloadInstall(self, date: str, flags: str):
         pass
 
 
@@ -817,25 +794,13 @@ class AMDTool(InteractivelyDownloadedTool):
     def __init__(self, name: str, versionReq: str):
         super().__init__("vlsi", "amd", name, versionReq)
 
-    @abstractmethod
-    def versionToFileNameMap(self) -> Dict[str, str]:
-        pass
-
-    def latestInstallableVersion(self, versionReq: str) -> str:
-        for version in self.versionToFileNameMap().keys():
-            if fnmatch.fnmatch(version, versionReq):
-                return version
-        return ""
-
-    # TODO: consider replacing with webcrawling techniques instead of a fixed lookup
-    def downloadFileName(self) -> str:
-        try:
-            return self.versionToFileNameMap()[self.versionLoc.version]
-        except:
-            return self.unsupportedVersionErr()
-
-    def downloadURL(self) -> str:
-        return f"https://www.xilinx.com/member/forms/download/xef.html?filename={self.downloadFileName()}"
-
     def downloadInstructions(self) -> str:
         return "Login with your Xilinx account and then click on the Download button at the bottom of the page."
+
+
+class IntelTool(InteractivelyDownloadedTool):
+    def __init__(self, name: str, versionReq: str):
+        super().__init__("vlsi", "intel", name, versionReq)
+
+    def downloadInstructions(self) -> str:
+        return "Click on the `Accept` button to accept Intel's legal disclaimer and start the download."
